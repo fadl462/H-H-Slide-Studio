@@ -1,7 +1,6 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import pptxgen from 'pptxgenjs';
-import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -14,15 +13,6 @@ const C = {
   teal:'075766', berry:'A1164F', navy:'24205F', cyan:'2CB8CE',
   gold:'F5C84C', paper:'F7F5F0', pale:'EDF5F6', ink:'263238', white:'FFFFFF'
 };
-const THEME_XML = `<a:clrScheme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="H&amp;H Accredited Training">
-<a:dk1><a:srgbClr val="${C.ink}"/></a:dk1><a:lt1><a:srgbClr val="${C.white}"/></a:lt1>
-<a:dk2><a:srgbClr val="${C.navy}"/></a:dk2><a:lt2><a:srgbClr val="${C.pale}"/></a:lt2>
-<a:accent1><a:srgbClr val="${C.teal}"/></a:accent1><a:accent2><a:srgbClr val="${C.berry}"/></a:accent2>
-<a:accent3><a:srgbClr val="${C.navy}"/></a:accent3><a:accent4><a:srgbClr val="${C.cyan}"/></a:accent4>
-<a:accent5><a:srgbClr val="${C.gold}"/></a:accent5><a:accent6><a:srgbClr val="${C.ink}"/></a:accent6>
-<a:hlink><a:srgbClr val="${C.cyan}"/></a:hlink><a:folHlink><a:srgbClr val="${C.berry}"/></a:folHlink>
-</a:clrScheme>`;
-
 const layouts = [
   ['title','Title slide'],['agenda','Lesson agenda'],['section','Section divider'],
   ['objectives','Learning goals'],['content','Key points'],['summary','Quick summary'],
@@ -52,27 +42,6 @@ async function loadBrandLogo() {
     return await fileToDataUrl(new File([await response.blob()], 'hh-logo.png', {type:'image/png'}));
   } catch { return null; }
 }
-async function applyHhTheme(presentationBlob) {
-  const archive = await JSZip.loadAsync(await presentationBlob.arrayBuffer());
-  const themeFile = archive.file('ppt/theme/theme1.xml');
-  if (!themeFile) throw new Error('PowerPoint theme file was not found.');
-  const xml = await themeFile.async('string');
-  if (!/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/.test(xml)) {
-    throw new Error('Could not locate the PowerPoint colour scheme.');
-  }
-  archive.file('ppt/theme/theme1.xml', xml.replace(/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/, THEME_XML));
-  const required=['[Content_Types].xml','ppt/presentation.xml','ppt/theme/theme1.xml','ppt/slides/slide1.xml'];
-  for (const name of required) if (!archive.file(name)) throw new Error(`The PowerPoint package is incomplete (${name} is missing).`);
-  const result=await archive.generateAsync({
-    type:'blob',
-    mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    compression:'DEFLATE',
-    compressionOptions:{level:6}
-  });
-  if (!result || result.size<12000) throw new Error('The exported PowerPoint package is unexpectedly small. Please retry.');
-  return result;
-}
-
 const SAMPLE_PHOTOS = [
   ['hero','hero-support-team.jpg','Support in action'],
   ['childcare','childcare.jpg','Childcare'],
@@ -137,7 +106,7 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function App() {
@@ -148,7 +117,7 @@ function App() {
   const [course,setCourse] = useState('Certificate III in Individual Support');
   const [busy,setBusy] = useState(false);
   const [active,setActive] = useState(0);
-  const [notice,setNotice] = useState('Drop a document or use the H&H brand-board sample to build your first draft.');
+  const [notice,setNotice] = useState('Loading the H&H sample deck with embedded photography. Upload your own material to replace it.');
 
   const activeSlide = slides[active] || slides[0];
   const update = (key,value) => setSlides(items => items.map((slide,index) => index === active ? {...slide,[key]:value} : slide));
@@ -244,7 +213,10 @@ function App() {
       setSource('');
       setSlides(draft); setActive(0);
       setNotice(`Sample loaded: ${draft.length} slides. Edit the content, then export the PowerPoint to test the prototype.`);
-    } catch(error) { setNotice(error.message || 'Could not load the sample.'); }
+    } catch(error) {
+      setSlides([]); setActive(0);
+      setNotice(`Sample could not be loaded: ${error.message || 'Please retry or upload your own material.'}`);
+    }
     finally { setBusy(false); }
   }
 
@@ -291,6 +263,7 @@ function App() {
   }
 
   async function exportPptx() {
+    if(!slides.length) { setNotice('Load the H&H sample or upload source material before exporting.'); return; }
     setBusy(true); setNotice('Building your editable H&H PowerPoint…');
     try {
       const pptx=new pptxgen();
@@ -307,10 +280,10 @@ function App() {
         background:{color:C.paper},
         objects:[
           {line:{x:0,y:7.32,w:13.333,h:0,line:{color:'D9E2E2',width:1}}},
-          {text:{text:'H&H  |  ACCREDITED TRAINING',options:{x:.55,y:7.05,w:4,h:.18,fontFace:'Source Sans 3',fontSize:8,color:pptx.SchemeColor.accent1,bold:true,charSpacing:1}}},
+          {text:{text:'H&H  |  ACCREDITED TRAINING',options:{x:.55,y:7.05,w:4,h:.18,fontFace:'Source Sans 3',fontSize:8,color:C.teal,bold:true,charSpacing:1}}},
           {text:{text:'REAL SKILLS. REAL SUPPORT. REAL CAREERS.',options:{x:8.25,y:7.05,w:4.5,h:.18,fontFace:'Source Sans 3',fontSize:7,color:'64757A',align:'right',charSpacing:.5}}}
         ],
-        slideNumber:{x:12.8,y:7.05,color:pptx.SchemeColor.accent1,fontFace:'Source Sans 3',fontSize:8}
+        slideNumber:{x:12.8,y:7.05,color:C.teal,fontFace:'Source Sans 3',fontSize:8}
       });
 
       slides.forEach(item=>{
@@ -363,21 +336,21 @@ function App() {
             slide.addShape(pptx.ShapeType.roundRect,{x:8.35,y:1.55,w:4.25,h:4.95,rectRadius:.14,line:{color:C.cyan,width:1.2},fill:{color:C.teal}});
             slide.addImage({data:item.imageData,x:8.42,y:1.62,w:4.11,h:4.81});
           } else {
-            slide.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:pptx.SchemeColor.accent4,width:3,transparency:5},rotate:5});
-            slide.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:pptx.SchemeColor.accent2,width:2,transparency:5},rotate:5});
+            slide.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:C.cyan,width:3,transparency:5},rotate:5});
+            slide.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:C.berry,width:2,transparency:5},rotate:5});
           }
           slide.addText(item.title,{x:.8,y:2.35,w:7.2,h:1.65,fontFace:'Manrope',fontSize:30,bold:true,color:C.white,fit:'shrink',margin:0});
           slide.addText(item.body||'',{x:.82,y:4.18,w:6.2,h:1.2,fontFace:'Source Sans 3',fontSize:19,color:'EAF4F4',fit:'shrink',margin:0});
           slide.addText(item.sub||course,{x:.82,y:6.42,w:6.3,h:.3,fontFace:'Source Sans 3',fontSize:11,color:C.gold,margin:0});
         } else {
-          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7,line:{color:pptx.SchemeColor.accent1,transparency:100},fill:{color:pptx.SchemeColor.accent1}});
+          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7,line:{color:C.teal,transparency:100},fill:{color:C.teal}});
           if(logo) slide.addImage({data:logo,x:11.45,y:.22,w:1.25,h:.73});
-          slide.addText(item.title,{x:.7,y:.55,w:10.2,h:.72,fontFace:'Manrope',fontSize:27,bold:true,color:pptx.SchemeColor.accent1,margin:0,fit:'shrink'});
-          slide.addShape(pptx.ShapeType.line,{x:.72,y:1.42,w:1.2,h:0,line:{color:pptx.SchemeColor.accent2,width:3}});
+          slide.addText(item.title,{x:.7,y:.55,w:10.2,h:.72,fontFace:'Manrope',fontSize:27,bold:true,color:C.teal,margin:0,fit:'shrink'});
+          slide.addShape(pptx.ShapeType.line,{x:.72,y:1.42,w:1.2,h:0,line:{color:C.berry,width:3}});
           if(['agenda','objectives','summary'].includes(item.type)) {
             item.body.split(/\n+/).filter(Boolean).slice(0,6).forEach((text,index)=>{
               const y=1.9+index*.82;
-              slide.addShape(pptx.ShapeType.ellipse,{x:.85,y:y+.1,w:.34,h:.34,line:{color:index%2?pptx.SchemeColor.accent4:pptx.SchemeColor.accent2,transparency:100},fill:{color:index%2?pptx.SchemeColor.accent4:pptx.SchemeColor.accent2}});
+              slide.addShape(pptx.ShapeType.ellipse,{x:.85,y:y+.1,w:.34,h:.34,line:{color:index%2?C.cyan:C.berry,transparency:100},fill:{color:index%2?C.cyan:C.berry}});
               slide.addText(text.replace(/^[-•\d.)\s]+/,''),{x:1.45,y,w:10.6,h:.55,fontFace:'Source Sans 3',fontSize:19,color:C.ink,fit:'shrink',margin:.03});
             });
           } else {
@@ -385,26 +358,34 @@ function App() {
             slide.addText(item.body,{x:1.15,y:2.2,w:item.imageData?6.1:10.9,h:4,fontFace:'Source Sans 3',fontSize:20,color:C.ink,fit:'shrink',breakLine:false,margin:.08});
             if(item.imageData) slide.addImage({data:item.imageData,x:7.65,y:2.2,w:4.45,h:3.8});
             if(item.resourceUrl) {
-              slide.addShape(pptx.ShapeType.roundRect,{x:1.15,y:6,w:3.8,h:.42,rectRadius:.06,line:{color:pptx.SchemeColor.accent1,width:1},fill:{color:C.pale}});
-              slide.addText('OPEN CLASS RESOURCE',{x:1.3,y:6.13,w:3.4,h:.12,fontFace:'Manrope',fontSize:8,bold:true,color:pptx.SchemeColor.accent1,hyperlink:{url:item.resourceUrl},margin:0});
+              slide.addShape(pptx.ShapeType.roundRect,{x:1.15,y:6,w:3.8,h:.42,rectRadius:.06,line:{color:C.teal,width:1},fill:{color:C.pale}});
+              slide.addText('OPEN CLASS RESOURCE',{x:1.3,y:6.13,w:3.4,h:.12,fontFace:'Manrope',fontSize:8,bold:true,color:C.teal,hyperlink:{url:item.resourceUrl},margin:0});
             }
             if(['activity','discussion'].includes(item.type)) {
-              slide.addShape(pptx.ShapeType.roundRect,{x:9.4,y:5.7,w:2.6,h:.5,rectRadius:.08,line:{color:pptx.SchemeColor.accent1,transparency:100},fill:{color:C.pale}});
-              slide.addText(item.type==='activity'?'LEARN BY DOING':'SHARE YOUR THINKING',{x:9.52,y:5.86,w:2.35,h:.16,fontFace:'Manrope',fontSize:8,bold:true,color:pptx.SchemeColor.accent1,align:'center',margin:0});
+              slide.addShape(pptx.ShapeType.roundRect,{x:9.4,y:5.7,w:2.6,h:.5,rectRadius:.08,line:{color:C.teal,transparency:100},fill:{color:C.pale}});
+              slide.addText(item.type==='activity'?'LEARN BY DOING':'SHARE YOUR THINKING',{x:9.52,y:5.86,w:2.35,h:.16,fontFace:'Manrope',fontSize:8,bold:true,color:C.teal,align:'center',margin:0});
             }
           }
         }
       });
 
-      const rawBlob=await pptx.write({outputType:'blob',compression:true});
-      const themedBlob=await applyHhTheme(rawBlob);
-      downloadBlob(themedBlob,'HH-Accredited-Training-Brand-Board-Sample.pptx');
-      setNotice('PowerPoint exported with the H&H editable colour theme and brand logo.');
+      const presentationBlob=await pptx.write({outputType:'blob'});
+      if(!presentationBlob || presentationBlob.size<12000) throw new Error('The PowerPoint export is incomplete. Please retry.');
+      const signature=new Uint8Array(await presentationBlob.slice(0,4).arrayBuffer());
+      if(signature[0]!==0x50 || signature[1]!==0x4B || signature[2]!==0x03 || signature[3]!==0x04) {
+        throw new Error('The generated file is not a valid PowerPoint ZIP package. Please retry.');
+      }
+      const galleryImages=slides.filter(item=>item.type==='gallery').flatMap(item=>item.galleryItems||[]);
+      if(galleryImages.some(item=>!item.imageData)) throw new Error('A gallery photograph is missing. Reload the H&H sample before exporting.');
+      downloadBlob(presentationBlob,'HH-Accredited-Training-Sample.pptx');
+      setNotice(`PowerPoint exported successfully: ${slides.length} slides, ${galleryImages.length} embedded gallery photographs. H&H styling is applied directly to editable slide elements.`);
     } catch(error) {
       console.error(error);
       setNotice('Export failed: '+(error.message || 'Please try again.'));
     } finally { setBusy(false); }
   }
+
+  useEffect(() => { loadBrandBoardSample(); }, []);
 
   return <div className="app">
     <aside className="sidebar">
@@ -427,12 +408,12 @@ function App() {
             <input type="file" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={event=>event.target.files[0]&&readFile(event.target.files[0])}/>
             <span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material or brand board here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD · PNG · JPG · WEBP</small>
           </label>
-          <button className="sample-btn" onClick={loadBrandBoardSample} disabled={busy}>✦  Load H&H brand-board sample</button>
+          <button className="sample-btn" onClick={loadBrandBoardSample} disabled={busy}>✦  Reload H&H brand-board sample (11 slides)</button>
           <div className="or-line"><span>DECK SETTINGS</span></div>
           <label className="field-label">Teaching format</label>
           <div className="mode-switch">{['Lecture','Quiz','Workshop'].map(value=><button key={value} className={mode===value?'active':''} onClick={()=>setMode(value)}>{value}</button>)}</div>
           <label className="field-label">Course / unit name</label><input className="text-input" value={course} onChange={event=>setCourse(event.target.value)}/>
-          <div className="brand-note"><span>✦</span><div><strong>H&H design system is active</strong><small>Brand logo, approved colours and fonts are embedded in your PowerPoint. Theme-linked elements can be recoloured in PowerPoint.</small></div></div>
+          <div className="brand-note"><span>✦</span><div><strong>H&H design system is active</strong><small>Brand logo, approved H&H colours and fonts are applied directly to editable PowerPoint elements.</small></div></div>
           <button className="build-btn" disabled={!source||busy} onClick={()=>{setSlides(structure(source,mode));setActive(0);setNotice('Your content has been reorganised into a teaching deck. Review each slide before export.');}}>✦  Build slide outline</button>
         </div>
         <div className="right-panel">
@@ -440,7 +421,7 @@ function App() {
           <div className="editor">
             <div className="slide-list">{slides.map((item,index)=><button key={`${index}-${item.title}`} className={`slide-thumb ${active===index?'current':''}`} onClick={()=>setActive(index)}><span className="thumb-no">{String(index+1).padStart(2,'0')}</span><span className="thumb-title">{item.title}</span><span className="thumb-type">{layouts.find(layout=>layout[0]===item.type)?.[1]||'Content'}</span></button>)}<button className="add-slide" onClick={()=>addSlide('content')}>＋ Add slide</button></div>
             <div className="edit-area">{activeSlide&&<>
-              <div className="preview-wrap">{activeSlide.type==='brandboard'&&activeSlide.imageData?<div className="mini-reference"><img src={activeSlide.imageData} alt="Original H&H brand board reference"/><span>ORIGINAL VISUAL REFERENCE</span></div>:<div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p><div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div>}</div>
+              <div className="preview-wrap">{activeSlide.type==='brandboard'&&activeSlide.imageData?<div className="mini-reference"><img src={activeSlide.imageData} alt="Original H&H brand board reference"/><span>ORIGINAL VISUAL REFERENCE</span></div>:activeSlide.type==='gallery'?<div className="mini-gallery-preview"><div className="mini-gallery-heading"><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><h3>{activeSlide.title}</h3><p>{activeSlide.body}</p></div><div className="mini-gallery-grid">{(activeSlide.galleryItems||[]).map((item,index)=><div className="mini-gallery-card" key={`${item.label}-${index}`}>{item.imageData?<img src={item.imageData} alt={item.label}/>:<div className="mini-gallery-placeholder">Photo unavailable</div>}<span>{item.label}</span></div>)}</div></div>:<div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p>{activeSlide.imageData&&<img className="mini-slide-photo" src={activeSlide.imageData} alt="Slide photograph"/>}<div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div>}</div>
               <div className="edit-fields">
                 <div className="edit-head"><span>EDIT SELECTED SLIDE</span><select value={activeSlide.type} onChange={event=>update('type',event.target.value)}>{layouts.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
                 <label>Slide heading</label><input value={activeSlide.title} onChange={event=>update('title',event.target.value)}/>
@@ -458,7 +439,7 @@ function App() {
       <div className="bottom-row">
         <div className="bottom-card"><span className="bottom-symbol">▧</span><div><strong>Designed for teaching</strong><small>Title, agenda, goals, content, activities, discussion, quiz and summary layouts.</small></div></div>
         <div className="bottom-card"><span className="bottom-symbol">◉</span><div><strong>One consistent identity</strong><small>H&H colours, Manrope headings, Source Sans 3 body text and branded slide furniture.</small></div></div>
-        <div className="bottom-card"><span className="bottom-symbol">↗</span><div><strong>PowerPoint-ready</strong><small>Editable text and shapes, widescreen 16:9 format, reusable master layout and theme.</small></div></div>
+        <div className="bottom-card"><span className="bottom-symbol">↗</span><div><strong>PowerPoint-ready</strong><small>Editable text and shapes, widescreen 16:9 format, reusable slide master and H&H colour styling.</small></div></div>
       </div>
       <footer className="status"><span className="status-dot"></span>{notice}<span className="status-right">H&H ACCREDITED TRAINING · SYDNEY</span></footer>
     </main>

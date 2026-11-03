@@ -113,3 +113,65 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .preview-wrap { min-height:0; }
   .mini-reference img { max-height:220px; }
 }
+
+/* Real photo previews for H&H gallery slides */
+.mini-gallery-preview {
+  width: min(100%, 540px);
+  min-height: 0;
+  padding: 18px;
+  border: 1px solid rgba(7,87,102,.12);
+  border-radius: 8px;
+  background: var(--hh-paper);
+  box-shadow: 0 12px 30px rgba(24,57,62,.14);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+.mini-gallery-heading .mini-logo { color: var(--hh-teal); margin-bottom: 10px; }
+.mini-gallery-heading h3 { margin: 0 0 5px; color: var(--hh-teal); font: 800 16px/1.2 Manrope,sans-serif; }
+.mini-gallery-heading p { margin: 0; color: var(--hh-ink); font: 10px/1.4 'Source Sans 3',sans-serif; }
+.mini-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+  align-content: start;
+}
+.mini-gallery-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce7e7;
+  border-radius: 6px;
+  background: #fff;
+}
+.mini-gallery-card img {
+  display: block;
+  width: 100%;
+  height: 74px;
+  object-fit: cover;
+  background: var(--hh-pale);
+}
+.mini-gallery-card span {
+  display: block;
+  min-height: 25px;
+  padding: 5px 4px;
+  color: var(--hh-teal);
+  font: 700 8px/1.2 Manrope,sans-serif;
+  text-align: center;
+}
+.mini-gallery-placeholder {
+  display: grid;
+  height: 74px;
+  place-items: center;
+  color: #60777b;
+  background: var(--hh-pale);
+  font-size: 8px;
+}
+.mini-slide-photo {
+  display: block;
+  max-width: 38%;
+  max-height: 92px;
+  margin: 8px auto 0;
+  object-fit: contain;
+  border-radius: 5px;
+}
