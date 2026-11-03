@@ -67,6 +67,21 @@ async function applyHhTheme(presentationBlob) {
     compression:'DEFLATE'
   });
 }
+
+function brandBoardSlides(imageData, filename='H&H brand guidelines') {
+  return [
+    {type:'title',title:'Real skills. Real support. Real careers.',body:'H&H Accredited Training',sub:'Brand identity and application guide'},
+    {type:'content',title:'A clear, confident brand promise',body:'Nationally recognised training in childcare, aged care, disability, community services and business.\n\nOur identity should feel clean, modern, friendly and highly readable. Every touchpoint should communicate practical skills, dedicated support and flexible study options.'},
+    {type:'content',title:'Logo suite and correct use',body:'Primary logo: horizontal H&H Accredited Training lock-up.\nStacked logo: use where vertical space is available.\nMonogram: compact H&H mark for small-format applications.\nRegulatory lock-up: include RTO 45704 where the context requires it.\n\nKeep the logo clear, legible and proportionate. Do not distort, recolour or crowd the mark.'},
+    {type:'content',title:'Approved colour palette',body:'#075766  Deep teal — primary brand colour\n#A1164F  Berry — emphasis and calls to action\n#24205F  Navy — supporting depth\n#2CB8CE  Cyan — highlights and pathway accents\n#F5C84C  Gold — selective warmth and emphasis\n#F7F5F0  Warm white — primary light background\n#EDF5F6  Pale blue — panels and soft backgrounds\n#263238  Charcoal — readable body text'},
+    {type:'content',title:'Typography: clear by design',body:'Manrope — headings, titles and prominent labels. Use ExtraBold, Bold and Semibold weights to establish hierarchy.\n\nSource Sans 3 — body copy, captions, supporting information and longer reading. Use Regular and Semibold weights.\n\nKeep line lengths comfortable, maintain strong contrast and avoid unnecessary typographic decoration.'},
+    {type:'content',title:'Iconography and visual language',body:'Use simple, friendly, consistent line icons.\nPrefer open shapes, even stroke weights and recognisable forms.\nUse generous whitespace and restrained colour accents.\nPair photography with clear, human-centred messages.\nAvoid clutter, heavy effects and inconsistent illustration styles.'},
+    {type:'content',title:'The H&H learning pathway',body:'LEARN — Build real skills with expert trainers.\n\nCONNECT — Get support every step of the way.\n\nSUCCEED — Gain confidence and start your next career.\n\nUse this sequence to organise learner journeys, course communications and campaign messages.'},
+    {type:'content',title:'Brand applications and consistency',body:'Carry the same identity across social media, course guides, presentation slides, email signatures, certificates, uniforms, name badges, website headers and posters.\n\nKeep the logo, colour palette, typography, icon style and message hierarchy consistent. Adapt layouts to each format without changing the underlying identity.'},
+    {type:'brandboard',title:'Original brand board — visual reference',body:`Source image: ${filename}\nThis slide preserves the supplied artwork as a visual reference. The preceding slides are editable PowerPoint content.`,imageData}
+  ];
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -86,7 +101,7 @@ function App() {
   const [course,setCourse] = useState('Certificate III in Individual Support');
   const [busy,setBusy] = useState(false);
   const [active,setActive] = useState(0);
-  const [notice,setNotice] = useState('Drop a document to build your first draft.');
+  const [notice,setNotice] = useState('Drop a document or use the H&H brand-board sample to build your first draft.');
 
   const activeSlide = slides[active] || slides[0];
   const update = (key,value) => setSlides(items => items.map((slide,index) => index === active ? {...slide,[key]:value} : slide));
@@ -169,11 +184,43 @@ function App() {
     return output;
   }
 
+  async function loadBrandBoardSample() {
+    setBusy(true); setNotice('Preparing the H&H brand-board sample…');
+    try {
+      const response=await fetch('/assets/hh-brand-guidelines.jpg');
+      if(!response.ok) throw new Error('The bundled brand-board sample could not be loaded.');
+      const blob=await response.blob();
+      const data=await fileToDataUrl(new File([blob],'H&H-Accredited-Training-brand-board.jpg',{type:'image/jpeg'}));
+      const draft=brandBoardSlides(data,'H&H Accredited Training brand guidelines');
+      setFile({name:'H&H Accredited Training brand guidelines.png'});
+      setSource('');
+      setSlides(draft); setActive(0);
+      setNotice(`Sample loaded: ${draft.length} slides. Edit the content, then export the PowerPoint to test the prototype.`);
+    } catch(error) { setNotice(error.message || 'Could not load the sample.'); }
+    finally { setBusy(false); }
+  }
+
   async function readFile(upload) {
     setBusy(true); setFile(upload); setNotice('Reading your material…');
     try {
       const ext=upload.name.split('.').pop().toLowerCase();
       let text='';
+      if(['png','jpg','jpeg','webp'].includes(ext)) {
+        const data=await fileToDataUrl(upload);
+        const isHhBoard=/brand[\s_-]?(guidelines|board)/i.test(upload.name);
+        const draft=isHhBoard
+          ? brandBoardSlides(data,upload.name)
+          : [
+              {type:'title',title:'Visual reference deck',body:'Use this presentation to discuss the supplied image and add your own teaching notes.',sub:upload.name},
+              {type:'brandboard',title:'Original image — visual reference',body:`Source image: ${upload.name}\nThe image is preserved as a visual reference. Text in the image is not automatically extracted.`,imageData:data}
+            ];
+        setSource('');
+        setSlides(draft); setActive(0);
+        setNotice(isHhBoard
+          ? `Imported ${upload.name}. Created ${draft.length} slides with editable brand summaries and the original image as a reference; review before export.`
+          : `Imported ${upload.name} as a visual reference. Image text is not automatically extracted; add your own editable content before export.`);
+        return;
+      }
       if(['txt','md'].includes(ext)) text=await upload.text();
       else if(ext==='docx') text=(await mammoth.extractRawText({arrayBuffer:await upload.arrayBuffer()})).value;
       else if(ext==='pdf') {
@@ -185,7 +232,7 @@ function App() {
           pages.push(content.items.map(item=>item.str).filter(Boolean).join(' '));
         }
         text=pages.join('\n\n');
-      } else throw new Error('Please use PDF, DOCX, TXT or MD.');
+      } else throw new Error('Please use PDF, DOCX, TXT, MD or an image (PNG, JPG, WEBP).');
       if(!text.trim()) throw new Error('No readable text was found. Scanned PDFs need OCR before upload.');
       setSource(text);
       const draft=structure(text,mode);
@@ -220,6 +267,13 @@ function App() {
 
       slides.forEach(item=>{
         const slide=pptx.addSlide('HH_BASE');
+        if(item.type==='brandboard') {
+          slide.background={color:C.paper};
+          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.333,h:7.5,line:{color:C.paper,transparency:100},fill:{color:C.paper}});
+          if(item.imageData) slide.addImage({data:item.imageData,x:1.92,y:.18,w:9.5,h:6.33});
+          slide.addText('ORIGINAL BRAND BOARD  •  VISUAL REFERENCE',{x:.38,y:7.24,w:6,h:.12,fontFace:'Manrope',fontSize:6,bold:true,color:C.teal,margin:0,charSpacing:.6});
+          return;
+        }
         const dark=['title','section'].includes(item.type);
         slide.background={color:dark?C.teal:C.paper};
         if(dark) {
@@ -263,7 +317,7 @@ function App() {
 
       const rawBlob=await pptx.write({outputType:'blob',compression:true});
       const themedBlob=await applyHhTheme(rawBlob);
-      downloadBlob(themedBlob,'HH-Accredited-Training-Teaching-Deck.pptx');
+      downloadBlob(themedBlob,'HH-Accredited-Training-Brand-Board-Sample.pptx');
       setNotice('PowerPoint exported with the H&H editable colour theme and brand logo.');
     } catch(error) {
       console.error(error);
@@ -289,9 +343,10 @@ function App() {
         <div className="left-panel">
           <div className="panel-head"><div><span className="step">01 / SOURCE MATERIAL</span><h2>Start with your content</h2><p>Drop in lecture notes, a course guide or a worksheet.</p></div><span className="file-icon">↥</span></div>
           <label className="dropzone" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();if(event.dataTransfer.files[0])readFile(event.dataTransfer.files[0]);}}>
-            <input type="file" accept=".pdf,.docx,.txt,.md" onChange={event=>event.target.files[0]&&readFile(event.target.files[0])}/>
-            <span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD</small>
+            <input type="file" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={event=>event.target.files[0]&&readFile(event.target.files[0])}/>
+            <span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material or brand board here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD · PNG · JPG · WEBP</small>
           </label>
+          <button className="sample-btn" onClick={loadBrandBoardSample} disabled={busy}>✦  Load H&H brand-board sample</button>
           <div className="or-line"><span>DECK SETTINGS</span></div>
           <label className="field-label">Teaching format</label>
           <div className="mode-switch">{['Lecture','Quiz','Workshop'].map(value=><button key={value} className={mode===value?'active':''} onClick={()=>setMode(value)}>{value}</button>)}</div>
@@ -304,7 +359,7 @@ function App() {
           <div className="editor">
             <div className="slide-list">{slides.map((item,index)=><button key={`${index}-${item.title}`} className={`slide-thumb ${active===index?'current':''}`} onClick={()=>setActive(index)}><span className="thumb-no">{String(index+1).padStart(2,'0')}</span><span className="thumb-title">{item.title}</span><span className="thumb-type">{layouts.find(layout=>layout[0]===item.type)?.[1]||'Content'}</span></button>)}<button className="add-slide" onClick={()=>addSlide('content')}>＋ Add slide</button></div>
             <div className="edit-area">{activeSlide&&<>
-              <div className="preview-wrap"><div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p><div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div></div>
+              <div className="preview-wrap">{activeSlide.type==='brandboard'&&activeSlide.imageData?<div className="mini-reference"><img src={activeSlide.imageData} alt="Original H&H brand board reference"/><span>ORIGINAL VISUAL REFERENCE</span></div>:<div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p><div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div>}</div>
               <div className="edit-fields">
                 <div className="edit-head"><span>EDIT SELECTED SLIDE</span><select value={activeSlide.type} onChange={event=>update('type',event.target.value)}>{layouts.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
                 <label>Slide heading</label><input value={activeSlide.title} onChange={event=>update('title',event.target.value)}/>

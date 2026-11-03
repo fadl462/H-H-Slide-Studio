@@ -84,3 +84,32 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Brand-board sample workflow and refined editor states */
+.sample-btn {
+  width:100%; margin-top:10px; padding:11px 12px; border:1px solid #b9d8dc;
+  border-radius:8px; background:#f2f9fa; color:#075766;
+  font:800 10px Manrope,sans-serif; cursor:pointer; transition:all .18s ease;
+}
+.sample-btn:hover:not(:disabled) { background:#e5f3f5; border-color:#2cb8ce; transform:translateY(-1px); }
+.sample-btn:disabled { opacity:.55; cursor:not-allowed; }
+.dropzone { transition:border-color .18s ease,background .18s ease,transform .18s ease; }
+.dropzone:hover { border-color:#2cb8ce; background:#f1f9fa; }
+.mini-reference { width:min(100%,520px); position:relative; background:#fff; border-radius:7px; padding:8px; box-shadow:0 4px 15px #26323820; }
+.mini-reference img { display:block; width:100%; height:auto; max-height:300px; object-fit:contain; }
+.mini-reference span { display:block; padding:7px 4px 1px; color:#075766; font:800 7px Manrope,sans-serif; letter-spacing:1px; }
+.slide-thumb:focus-visible,.add-slide:focus-visible,.sample-btn:focus-visible,.export:focus-visible,.build-btn:focus-visible {
+  outline:3px solid #2cb8ce; outline-offset:2px;
+}
+@media(max-width:900px) {
+  .main { padding:22px 20px; }
+  .topbar { gap:18px; }
+  .top-actions { flex-wrap:wrap; justify-content:flex-end; }
+}
+@media(max-width:700px) {
+  .top-actions { justify-content:flex-start; }
+  .secure { display:none; }
+  .preview-wrap { min-height:0; }
+  .mini-reference img { max-height:220px; }
+}
