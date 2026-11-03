@@ -1,0 +1,86 @@
+/* H&H brand refresh — additive styles; existing layout and responsive rules remain intact. */
+:root {
+  --hh-teal: #075766;
+  --hh-berry: #A1164F;
+  --hh-navy: #24205F;
+  --hh-cyan: #2CB8CE;
+  --hh-gold: #F5C84C;
+  --hh-paper: #F7F5F0;
+  --hh-pale: #EDF5F6;
+  --hh-ink: #263238;
+}
+body {
+  background:
+    radial-gradient(ellipse at 88% 4%, rgba(44,184,206,.075), transparent 31rem),
+    linear-gradient(135deg, #f7f8f6 0%, #f0f5f5 100%);
+}
+button, input, textarea, select, a { -webkit-tap-highlight-color: transparent; }
+button, .side-item, .dropzone, .slide-thumb, .bottom-card, .left-panel, .right-panel {
+  transition: background-color .2s ease, border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 3px solid rgba(44,184,206,.48);
+  outline-offset: 2px;
+}
+.sidebar {
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(14px);
+}
+.brand img { object-fit: contain; }
+.main { max-width: 1840px; }
+.topbar h1 { letter-spacing: -1.25px; }
+.export, .build-btn {
+  box-shadow: 0 8px 22px rgba(7,87,102,.13);
+  transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+.export:hover:not(:disabled), .build-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(7,87,102,.2);
+}
+.export { background: var(--hh-berry); }
+.export:hover:not(:disabled) { background: #8e1043; }
+.build-btn { background: var(--hh-teal); }
+.build-btn:hover:not(:disabled) { background: #064a57; }
+.left-panel, .right-panel {
+  border-color: rgba(7,87,102,.10);
+  box-shadow: 0 14px 38px rgba(24,57,62,.065);
+}
+.dropzone {
+  background: linear-gradient(145deg, #fbfdfc, #f1f8f8);
+}
+.dropzone:hover {
+  border-color: var(--hh-cyan);
+  background: #f0fafb;
+  box-shadow: 0 8px 24px rgba(44,184,206,.10);
+}
+.brand-note {
+  background: linear-gradient(115deg, #eef7f6, #f5f8f7);
+  border: 1px solid rgba(7,87,102,.055);
+}
+.preview-wrap {
+  background:
+    radial-gradient(circle at 90% 5%, rgba(44,184,206,.12), transparent 45%),
+    linear-gradient(145deg, #f0f5f4, #e8efee);
+}
+.mini-slide {
+  border-radius: 3px;
+  box-shadow: 0 12px 30px rgba(24,57,62,.14);
+}
+.mini-slide.dark { background: linear-gradient(135deg, #075766 0%, #064c5a 70%, #073f4a 100%); }
+.slide-thumb:hover, .bottom-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(44,184,206,.5);
+  box-shadow: 0 8px 20px rgba(24,57,62,.07);
+}
+.slide-thumb.current {
+  background: linear-gradient(120deg, #f0fafb, #f7fbfa);
+  border-color: var(--hh-cyan);
+}
+.bottom-card {
+  border-color: rgba(7,87,102,.10);
+  box-shadow: 0 5px 18px rgba(24,57,62,.035);
+}
+.status-dot { box-shadow: 0 0 0 4px rgba(42,166,142,.10); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

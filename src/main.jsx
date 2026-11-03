@@ -1,85 +1,331 @@
-import React, {useMemo, useState} from 'react';
+import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import pptxgen from 'pptxgenjs';
+import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './style.css';
+import './hh-brand-refresh.css';
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-const C={teal:'075766',red:'A1164F',navy:'24205F',cyan:'2CB8CE',gold:'F5C84C',paper:'F7F5F0',pale:'EDF5F6',ink:'263238',white:'FFFFFF'};
-const initial=[
- {type:'title',title:'Real skills. Real support. Real careers.',body:'A practical introduction to person-centred support',sub:'H&H Accredited Training  •  Faculty teaching deck'},
- {type:'agenda',title:'Today’s learning journey',body:'Understand the foundations\nExplore practical approaches\nApply learning to real situations\nCheck understanding'},
- {type:'objectives',title:'By the end of this lesson, you can…',body:'Explain the key principles\nIdentify safe and effective practice\nApply the approach to a case study'},
- {type:'content',title:'Start with the person',body:'Good support begins by understanding the person, their preferences and what matters to them.\n\nListen actively and communicate clearly.\nRespect choice, dignity and independence.\nAdapt support to the individual.'},
- {type:'activity',title:'Put it into practice',body:'In pairs, review the scenario and identify two ways to support choice and independence.\n\nAllow 5 minutes, then share one insight with the group.'},
- {type:'summary',title:'The takeaways',body:'Person-centred support starts with listening.\nSmall choices build confidence and independence.\nSafe practice and dignity go hand in hand.'}
+const C = {
+  teal:'075766', berry:'A1164F', navy:'24205F', cyan:'2CB8CE',
+  gold:'F5C84C', paper:'F7F5F0', pale:'EDF5F6', ink:'263238', white:'FFFFFF'
+};
+const THEME_XML = `<a:clrScheme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="H&amp;H Accredited Training">
+<a:dk1><a:srgbClr val="${C.ink}"/></a:dk1><a:lt1><a:srgbClr val="${C.white}"/></a:lt1>
+<a:dk2><a:srgbClr val="${C.navy}"/></a:dk2><a:lt2><a:srgbClr val="${C.pale}"/></a:lt2>
+<a:accent1><a:srgbClr val="${C.teal}"/></a:accent1><a:accent2><a:srgbClr val="${C.berry}"/></a:accent2>
+<a:accent3><a:srgbClr val="${C.navy}"/></a:accent3><a:accent4><a:srgbClr val="${C.cyan}"/></a:accent4>
+<a:accent5><a:srgbClr val="${C.gold}"/></a:accent5><a:accent6><a:srgbClr val="${C.ink}"/></a:accent6>
+<a:hlink><a:srgbClr val="${C.cyan}"/></a:hlink><a:folHlink><a:srgbClr val="${C.berry}"/></a:folHlink>
+</a:clrScheme>`;
+
+const layouts = [
+  ['title','Title slide'],['agenda','Lesson agenda'],['section','Section divider'],
+  ['objectives','Learning goals'],['content','Key points'],['summary','Quick summary'],
+  ['activity','Class activity'],['discussion','Discussion'],['quiz','Knowledge check'],['chart','Data / chart slide']
 ];
-const layouts=[['title','Title slide'],['agenda','Lesson agenda'],['section','Section divider'],['objectives','Learning goals'],['content','Key points'],['summary','Quick summary'],['activity','Class activity'],['discussion','Discussion'],['quiz','Knowledge check'],['chart','Data / chart slide']];
-function App(){
- const [file,setFile]=useState(null),[source,setSource]=useState(''),[slides,setSlides]=useState(initial),[mode,setMode]=useState('Lecture'),[course,setCourse]=useState('Certificate III in Individual Support'),[busy,setBusy]=useState(false),[active,setActive]=useState(0),[notice,setNotice]=useState('Drop a document to build your first draft.');
- const [brand,setBrand]=useState(true);
- const addSlide=(type)=>{const s={type,title:layouts.find(x=>x[0]===type)?.[1]||'New slide',body:type==='quiz'?'Question: Add your question here\n\nA. Option one\nB. Option two\nC. Option three\nD. Option four':type==='discussion'?'What would you do in this situation?\n\nConsider the person’s needs, preferences and safety.':'Add your teaching points here.'};setSlides(v=>[...v,s]);setActive(slides.length)};
- const update=(k,val)=>setSlides(v=>v.map((s,i)=>i===active?{...s,[k]:val}:s));
- async function readFile(f){setBusy(true);setFile(f);setNotice('Reading your material…');try{let text='';const ext=f.name.split('.').pop().toLowerCase();if(ext==='txt'||ext==='md')text=await f.text();else if(ext==='docx'){const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});text=r.value;}else if(ext==='pdf'){const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;const pages=[];for(let p=1;p<=pdf.numPages;p++){const page=await pdf.getPage(p);const c=await page.getTextContent();const rows=[];for(const item of c.items){if(!item.str?.trim())continue;const y=Math.round(item.transform?.[5]||0);let row=rows.find(r=>Math.abs(r.y-y)<=2);if(!row){row={y,items:[]};rows.push(row);}row.items.push({x:item.transform?.[4]||0,text:item.str.trim()});}const pageText=rows.sort((a,b)=>b.y-a.y).map(r=>r.items.sort((a,b)=>a.x-b.x).map(x=>x.text).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');pages.push(pageText);}text=pages.join('\n\n');}else if(ext==='pptx'){throw new Error('PPTX import is not enabled yet. Export the source as PDF or DOCX, then drop it here.');}else throw new Error('Please use PDF, DOCX, TXT or MD.');if(!text.trim())throw new Error('No readable text was found. If this is a scanned PDF, run OCR first and upload the searchable PDF.');setSource(text);const generated=structure(text,mode);setSlides(generated);setActive(0);setNotice(`Imported ${f.name}. Created ${generated.length} draft slides. Review the outline before export.`);}catch(e){setNotice(e.message||'Could not read that file.')}finally{setBusy(false)}}
- function structure(text,kind){
-  const tidy=(v)=>v.replace(/\u00a0/g,' ').replace(/[\t ]+/g,' ').replace(/[‐‑‒–—]/g,'-').trim();
-  let raw=text.replace(/\r/g,'').replace(/\u00ad/g,'').split('\n').map(tidy);
-  raw=raw.filter((line,i)=>line&&!/^\s*(page\s+)?\d{1,4}\s*$/i.test(line));
-  const isBullet=(line)=>/^(?:[-*•▪◦‣]|\d{1,3}[.)]|[a-z][.)]|[A-Z][.)])\s+/.test(line);
-  const isHeading=(line)=>{const t=line.replace(/^#{1,6}\s*/, '').trim();if(!t||t.length>92)return false;if(/^#{1,6}\s+/.test(line))return true;const numbered=t.match(/^\d+(?:\.\d+)*[.)]?\s+(.+)$/);if(numbered){const rest=numbered[1];if(rest===rest.toUpperCase()||(rest.split(/\s+/).length<=7&&!/[?]$/.test(rest)))return true;}if(isBullet(t))return false;if(t===t.toUpperCase()&&/[A-Z]/.test(t)&&t.length>=4&&t.length<76)return true;return t.length<68&&!/[.!?;:]$/.test(t)&&t.split(/\s+/).length<=9&&/^[A-Z0-9]/.test(t);};
-  const paragraphs=[];let buffer='';
-  for(const line of raw){if(!line){if(buffer.trim()){paragraphs.push(buffer.trim());buffer='';}continue;}if(isHeading(line)||isBullet(line)){if(buffer.trim()){paragraphs.push(buffer.trim());buffer='';}paragraphs.push(line.replace(/^#{1,6}\s*/,''));continue;}buffer+=(buffer?' ':'')+line;if(buffer.length>950){paragraphs.push(buffer.trim());buffer='';}}
-  if(buffer.trim())paragraphs.push(buffer.trim());
-  const sections=[];let current={heading:'',items:[]};
-  const flush=()=>{if(current.heading||current.items.length)sections.push(current);};
-  for(const para of paragraphs){if(isHeading(para)){flush();current={heading:para.replace(/^[\d.]+[.)]?\s*/,''),items:[]};}else current.items.push(para);}
-  flush();
-  if(!sections.length)sections.push({heading:'Teaching content',items:paragraphs});
-  const classify=(heading,body)=>{const v=(heading+' '+body.slice(0,240)).toLowerCase();if(/learning outcomes?|learning objectives?|by the end of|you will be able to|lesson objectives?/.test(v))return 'objectives';if(/quiz|knowledge check|check your understanding|test your knowledge|review questions?|assessment questions?|multiple.choice|select the correct|true or false|question\s*\d|\bq\s*\d+/.test(v)||(kind==='Quiz'&&(/\?/.test(body)||/[A-D][.)]\s/.test(body))))return 'quiz';if(/discussion|reflect(?:ion)? question|think about|consider the following/.test(v))return 'discussion';if(/activity|practical task|group work|pair work|workshop exercise|try this/.test(v))return 'activity';if(/summary|key takeaways|in conclusion|conclusion|recap/.test(v))return 'summary';if(/agenda|today.?s lesson|session overview|lesson outline/.test(v))return 'agenda';return 'content';};
-  const firstTitle=(sections.find(x=>x.heading)?.heading||paragraphs.find(x=>x.length>5&&x.length<100)||'Teaching session').replace(/^[#\d.)\s-]+/,'').trim();
-  const contentSections=sections.filter(x=>x.items.length||x.heading);
-  const headings=contentSections.filter(x=>classify(x.heading,x.items.join(' '))==='content').map(x=>x.heading).filter(Boolean).filter(x=>x.toLowerCase()!==firstTitle.toLowerCase());
-  const out=[{type:'title',title:firstTitle,body:course,sub:'H&H Accredited Training  •  Faculty teaching deck'}];
-  const explicitAgenda=contentSections.find(x=>classify(x.heading,x.items.join(' '))==='agenda');
-  if(explicitAgenda){out.push({type:'agenda',title:explicitAgenda.heading||'Lesson agenda',body:explicitAgenda.items.join('\n')});}
-  else if(headings.length>=3&&kind!=='Quiz'){out.push({type:'agenda',title:'Today’s learning journey',body:headings.slice(0,6).join('\n')});}
-  const splitItems=(items)=>{const groups=[];let group=[];let count=0;const expanded=[];for(const item of items){if(item.length>650&&!isBullet(item)){const sentences=item.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[item];let part='';for(const sentence of sentences){if(part&&part.length+sentence.length>520){expanded.push(part.trim());part='';}part+=(part?' ':'')+sentence.trim();}if(part.trim())expanded.push(part.trim());}else expanded.push(item);}for(const item of expanded){const next=count+item.length;if(group.length&&(next>560||group.length>=6)){groups.push(group);group=[];count=0;}group.push(item);count+=item.length;}if(group.length)groups.push(group);return groups;};
-  let contentIndex=0;
-  for(const section of contentSections){
-   const body=section.items.join('\n');if(!body.trim())continue;
-   const type=classify(section.heading,body);
-   if(type==='agenda'&&explicitAgenda===section)continue;
-   if(type==='agenda')continue;
-   if(type==='objectives'||type==='quiz'||type==='discussion'||type==='activity'||type==='summary'){
-    const groups=splitItems(section.items);groups.forEach((g,j)=>out.push({type,title:groups.length>1?`${section.heading||layouts.find(x=>x[0]===type)[1]} (${j+1})`:section.heading||({objectives:'Learning goals',quiz:'Knowledge check',discussion:'Discussion',activity:'Class activity',summary:'Quick summary'}[type]),body:g.join('\n')}));
-    continue;
-   }
-   const groups=splitItems(section.items);
-   groups.forEach((g,j)=>{contentIndex++;let title=section.heading||'';if(!title){const candidate=g[0].replace(/^(?:[-*•▪◦‣]|\d+[.)])\s+/,'');title=candidate.length<=64&&candidate.split(/\s+/).length<=9?candidate:`Key teaching points ${contentIndex}`;}if(groups.length>1)title=`${title} (${j+1})`;const cleanBody=g.join('\n');out.push({type:'content',title,body:cleanBody});});
+const initial = [
+  {type:'title',title:'Real skills. Real support. Real careers.',body:'A practical introduction to person-centred support',sub:'H&H Accredited Training  •  Faculty teaching deck'},
+  {type:'agenda',title:'Today’s learning journey',body:'Understand the foundations\nExplore practical approaches\nApply learning to real situations\nCheck understanding'},
+  {type:'objectives',title:'By the end of this lesson, you can…',body:'Explain the key principles\nIdentify safe and effective practice\nApply the approach to a case study'},
+  {type:'content',title:'Start with the person',body:'Good support begins by understanding the person, their preferences and what matters to them.\n\nListen actively and communicate clearly.\nRespect choice, dignity and independence.\nAdapt support to the individual.'},
+  {type:'activity',title:'Put it into practice',body:'In pairs, review the scenario and identify two ways to support choice and independence.\n\nAllow 5 minutes, then share one insight with the group.'},
+  {type:'summary',title:'The takeaways',body:'Person-centred support starts with listening.\nSmall choices build confidence and independence.\nSafe practice and dignity go hand in hand.'}
+];
+
+function fileToDataUrl(file) {
+  return new Promise((resolve,reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function loadBrandLogo() {
+  try {
+    const response = await fetch('/assets/hh-logo.png');
+    if (!response.ok) return null;
+    return await fileToDataUrl(new File([await response.blob()], 'hh-logo.png', {type:'image/png'}));
+  } catch { return null; }
+}
+async function applyHhTheme(presentationBlob) {
+  const archive = await JSZip.loadAsync(presentationBlob);
+  const themeFile = archive.file('ppt/theme/theme1.xml');
+  if (!themeFile) throw new Error('PowerPoint theme file was not found.');
+  const xml = await themeFile.async('string');
+  if (!/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/.test(xml)) {
+    throw new Error('Could not locate the PowerPoint colour scheme.');
   }
-  if(kind==='Quiz'&&!out.some(x=>x.type==='quiz')){out.push({type:'quiz',title:'Knowledge check',body:'Add a question based on the material and include answer options for learners.'});}
-  if(kind==='Workshop'&&!out.some(x=>x.type==='activity'||x.type==='discussion')){out.push({type:'activity',title:'Apply your learning',body:'Use the key ideas from this session to complete a practical task. Add the task instructions and expected output.'});}
-  if(!out.some(x=>x.type==='summary')){const keyPoints=out.filter(x=>x.type==='content').slice(-3).map(x=>x.title);if(keyPoints.length)out.push({type:'summary',title:'Review and reflect',body:'Revisit these key areas:\n'+keyPoints.join('\n')+'\n\nWhat is one idea you will apply after this session?'});}
-  return out;
- }
- async function exportPptx(){setBusy(true);setNotice('Building your editable PowerPoint…');try{const pptx=new pptxgen();pptx.layout='LAYOUT_WIDE';pptx.author='H&H Accredited Training';pptx.subject='Faculty teaching presentation';pptx.title=slides[0]?.title||'H&H Teaching Slides';pptx.company='H&H Accredited Training';pptx.lang='en-AU';pptx.theme={headFontFace:'Manrope',bodyFontFace:'Source Sans 3',lang:'en-AU'};pptx.defineSlideMaster({title:'HH_BASE',background:{color:C.paper},objects:[{line:{x:0,y:7.32,w:13.333,h:0,line:{color:'D9E2E2',width:1}}},{text:{text:'H&H  |  ACCREDITED TRAINING',options:{x:.55,y:7.05,w:4,h:.18,fontFace:'Source Sans 3',fontSize:8,color:C.teal,bold:true,charSpacing:1}}},{text:{text:'REAL SKILLS. REAL SUPPORT. REAL CAREERS.',options:{x:8.25,y:7.05,w:4.5,h:.18,fontFace:'Source Sans 3',fontSize:7,color:'64757A',align:'right',charSpacing:.5}}}],slideNumber:{x:12.8,y:7.05,color:C.teal,fontFace:'Source Sans 3',fontSize:8}});
- for(let i=0;i<slides.length;i++){const s=slides[i],sl=pptx.addSlide('HH_BASE');sl.background={color:s.type==='title'?C.teal:C.paper};const dark=s.type==='title'||s.type==='section';const fg=dark?C.white:C.ink;const accent=dark?C.gold:C.red;
- if(s.type==='title'||s.type==='section'){sl.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:C.cyan,width:3,transparency:5},adjustPoint:.2,rotate:5});sl.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:C.red,width:2,transparency:5},rotate:5});sl.addText('h&h',{x:.7,y:.55,w:2.4,h:.72,fontFace:'Manrope',fontSize:40,bold:true,color:C.white,breakLine:false,margin:0});sl.addText('Accredited Training',{x:.78,y:1.27,w:2.5,h:.3,fontFace:'Source Sans 3',fontSize:15,color:C.white,margin:0});sl.addText(s.title,{x:.8,y:2.45,w:7.5,h:1.55,fontFace:'Manrope',fontSize:30,bold:true,color:C.white,breakLine:false,fit:'shrink',margin:0});sl.addText(s.body||'',{x:.82,y:4.25,w:6.6,h:1.2,fontFace:'Source Sans 3',fontSize:19,color:'EAF4F4',breakLine:false,fit:'shrink',margin:0});sl.addText(s.sub||course,{x:.82,y:6.45,w:6.3,h:.3,fontFace:'Source Sans 3',fontSize:11,color:C.gold,margin:0});}
- else {sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7.0,line:{color:C.teal,transparency:100},fill:{color:C.teal}});sl.addText(s.title,{x:.7,y:.55,w:11.8,h:.72,fontFace:'Manrope',fontSize:27,bold:true,color:C.teal,margin:0,fit:'shrink'});sl.addShape(pptx.ShapeType.line,{x:.72,y:1.42,w:1.2,h:0,line:{color:C.red,width:3}});
- if(s.type==='agenda'||s.type==='objectives'||s.type==='summary'){const items=s.body.split(/\n+/).filter(Boolean);items.forEach((t,j)=>{const y=1.9+j*.82;sl.addShape(pptx.ShapeType.ellipse,{x:.85,y:y+.1,w:.34,h:.34,line:{color:j%2?C.cyan:C.red,transparency:100},fill:{color:j%2?C.cyan:C.red}});sl.addText(t.replace(/^[-•\d.)\s]+/,''),{x:1.45,y:y,w:10.6,h:.55,fontFace:'Source Sans 3',fontSize:19,color:C.ink,breakLine:false,fit:'shrink',margin:0.03});});}
- else if(s.type==='quiz'){sl.addShape(pptx.ShapeType.roundRect,{x:.75,y:1.85,w:11.8,h:4.6,rectRadius:.12,line:{color:'DCE7E7',width:1},fill:{color:C.white}});sl.addText(s.body,{x:1.2,y:2.25,w:10.8,h:3.8,fontFace:'Source Sans 3',fontSize:21,color:C.ink,breakLine:false,fit:'shrink',margin:.08});sl.addText('CHECK YOUR UNDERSTANDING',{x:1.2,y:6.1,w:4,h:.2,fontFace:'Manrope',fontSize:9,bold:true,color:C.red,charSpacing:1});}
- else {sl.addShape(pptx.ShapeType.roundRect,{x:.75,y:1.85,w:11.8,h:4.75,rectRadius:.12,line:{color:'DCE7E7',width:1},fill:{color:C.white}});sl.addText(s.body,{x:1.15,y:2.2,w:s.imageData?6.1:10.9,h:4.0,fontFace:'Source Sans 3',fontSize:20,color:C.ink,breakLine:false,fit:'shrink',margin:.08});if(s.imageData){sl.addImage({data:s.imageData,x:7.65,y:2.2,w:4.45,h:3.8,});}if(s.type==='chart'){sl.addText('DATA STORY / INSERT YOUR MEASURES',{x:1.2,y:5.85,w:4,h:.2,fontFace:'Manrope',fontSize:8,bold:true,color:C.teal,charSpacing:1});[.48,.82,.62,.98].forEach((h,j)=>{sl.addShape(pptx.ShapeType.roundRect,{x:7.1+j*1.05,y:5.75-h*2,w:.58,h:h*2,rectRadius:.05,line:{color:[C.teal,C.cyan,C.red,C.gold][j],transparency:100},fill:{color:[C.teal,C.cyan,C.red,C.gold][j]}});});}if(s.resourceUrl){sl.addShape(pptx.ShapeType.roundRect,{x:1.15,y:6.0,w:3.8,h:.42,rectRadius:.06,line:{color:C.teal,width:1},fill:{color:C.pale}});sl.addText(s.resourceLabel||'OPEN CLASS RESOURCE',{x:1.3,y:6.13,w:3.4,h:.12,fontFace:'Manrope',fontSize:8,bold:true,color:C.teal,hyperlink:{url:s.resourceUrl},margin:0});}if(s.type==='activity'||s.type==='discussion'){sl.addShape(pptx.ShapeType.roundRect,{x:9.4,y:5.7,w:2.6,h:.5,rectRadius:.08,line:{color:C.teal,transparency:100},fill:{color:C.pale}});sl.addText(s.type==='activity'?'LEARN BY DOING':'SHARE YOUR THINKING',{x:9.52,y:5.86,w:2.35,h:.16,fontFace:'Manrope',fontSize:8,bold:true,color:C.teal,align:'center',margin:0});}}
- }
- }
- await pptx.writeFile({fileName:'HH-Accredited-Training-Teaching-Deck.pptx'});setNotice('PowerPoint exported. It is editable in Microsoft PowerPoint.');}catch(e){console.error(e);setNotice('Export failed: '+e.message)}finally{setBusy(false)}}
- const activeSlide=slides[active]||slides[0];
- return <div className="app"><aside className="sidebar"><div className="brand"><img src="/assets/hh-logo.png"/><span>SLIDE STUDIO</span></div><div className="side-label">WORKSPACE</div><button className="side-item selected">✦ <span>Presentation builder</span></button><a className="side-item" href="/how-to.html" style={{textDecoration:"none"}}>⌁ <span>Staff quick guide</span></a><button className="side-item" onClick={()=>setNotice('Brand system is locked to the supplied H&H guideline.')}>◈ <span>Brand system</span><b>LOCKED</b></button><div className="side-bottom"><div className="avatar">HH</div><div><strong>Faculty workspace</strong><small>H&H Accredited Training</small></div></div></aside>
- <main className="main"><header className="topbar"><div><div className="eyebrow">FACULTY TOOLKIT / POWERPOINT GENERATOR</div><h1>Teaching, beautifully presented.</h1><p>Turn your teaching material into a consistent, classroom-ready deck.</p></div><div className="top-actions"><span className="secure">● H&H BRAND APPLIED</span><button className="export" disabled={busy||!slides.length} onClick={exportPptx}>{busy?'Preparing…':'↓  Export PowerPoint'}</button></div></header>
- <section className="workspace"><div className="left-panel"><div className="panel-head"><div><span className="step">01 / SOURCE MATERIAL</span><h2>Start with your content</h2><p>Drop in lecture notes, a course guide or a worksheet.</p></div><span className="file-icon">↥</span></div><label className="dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0])}}><input type="file" accept=".pdf,.docx,.txt,.md" onChange={e=>e.target.files[0]&&readFile(e.target.files[0])}/><span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD</small></label><div className="or-line"><span>DECK SETTINGS</span></div><label className="field-label">Teaching format</label><div className="mode-switch">{['Lecture','Quiz','Workshop'].map(x=><button className={mode===x?'active':''} onClick={()=>setMode(x)}>{x}</button>)}</div><label className="field-label">Course / unit name</label><input className="text-input" value={course} onChange={e=>setCourse(e.target.value)}/><div className="brand-note"><span>✦</span><div><strong>H&H design system is active</strong><small>Approved palette, typography, spacing and footer are applied automatically.</small></div></div><button className="build-btn" disabled={!source||busy} onClick={()=>{setSlides(structure(source,mode));setActive(0);setNotice('Your content has been reorganised into a teaching deck. Review each slide before export.')}}>✦  Build slide outline</button></div>
- <div className="right-panel"><div className="panel-head right-head"><div><span className="step">02 / DECK EDITOR</span><h2>Your teaching deck</h2><p>Review and refine the slide content before export.</p></div><span className="slide-count">{slides.length} SLIDES</span></div><div className="editor"><div className="slide-list">{slides.map((s,i)=><button className={`slide-thumb ${active===i?'current':''}`} onClick={()=>setActive(i)}><span className="thumb-no">{String(i+1).padStart(2,'0')}</span><span className="thumb-title">{s.title}</span><span className="thumb-type">{layouts.find(x=>x[0]===s.type)?.[1]||'Content'}</span></button>)}<button className="add-slide" onClick={()=>addSlide('content')}>＋ Add slide</button></div><div className="edit-area">{activeSlide&&<><div className="preview-wrap"><div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p><div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div></div><div className="edit-fields"><div className="edit-head"><span>EDIT SELECTED SLIDE</span><select value={activeSlide.type} onChange={e=>update('type',e.target.value)}>{layouts.map(([v,l])=><option value={v}>{l}</option>)}</select></div><label>Slide heading</label><input value={activeSlide.title} onChange={e=>update('title',e.target.value)}/><label>Teaching content</label><textarea rows="7" value={activeSlide.body} onChange={e=>update('body',e.target.value)} placeholder="Add text, bullet points or questions…"/><label>Slide image (optional)</label><input type="file" accept="image/png,image/jpeg" onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=()=>update('imageData',r.result);r.readAsDataURL(f)}}}/>{activeSlide.imageData&&<button className="delete-slide" onClick={()=>update('imageData',null)}>Remove image</button>}<label>Video / worksheet link (optional)</label><input value={activeSlide.resourceUrl||''} onChange={e=>update('resourceUrl',e.target.value)} placeholder="https://…"/><div className="field-hint">Tip: Put each bullet or answer option on a new line. Add a photo to create a balanced text-and-image slide. The exported slide remains editable.</div><button className="delete-slide" onClick={()=>{if(slides.length>1){setSlides(v=>v.filter((_,i)=>i!==active));setActive(Math.max(0,active-1))}}}>Remove slide</button></div></>}</div></div></div></section>
- <div className="bottom-row"><div className="bottom-card"><span className="bottom-symbol">▧</span><div><strong>Designed for teaching</strong><small>Title, agenda, goals, content, activities, discussion, quiz and summary layouts.</small></div></div><div className="bottom-card"><span className="bottom-symbol">◉</span><div><strong>One consistent identity</strong><small>H&H colours, Manrope headings, Source Sans 3 body text and branded slide furniture.</small></div></div><div className="bottom-card"><span className="bottom-symbol">↗</span><div><strong>PowerPoint-ready</strong><small>Editable text and shapes, widescreen 16:9 format, reusable master layout and theme.</small></div></div></div>
- <footer className="status"><span className="status-dot"></span>{notice}<span className="status-right">H&H ACCREDITED TRAINING · SYDNEY</span></footer></main></div>
+  archive.file('ppt/theme/theme1.xml', xml.replace(/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/, THEME_XML));
+  return archive.generateAsync({
+    type:'blob',
+    mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    compression:'DEFLATE'
+  });
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+}
+
+function App() {
+  const [file,setFile] = useState(null);
+  const [source,setSource] = useState('');
+  const [slides,setSlides] = useState(initial);
+  const [mode,setMode] = useState('Lecture');
+  const [course,setCourse] = useState('Certificate III in Individual Support');
+  const [busy,setBusy] = useState(false);
+  const [active,setActive] = useState(0);
+  const [notice,setNotice] = useState('Drop a document to build your first draft.');
+
+  const activeSlide = slides[active] || slides[0];
+  const update = (key,value) => setSlides(items => items.map((slide,index) => index === active ? {...slide,[key]:value} : slide));
+  const addSlide = type => {
+    const body = type === 'quiz'
+      ? 'Question: Add your question here\n\nA. Option one\nB. Option two\nC. Option three\nD. Option four'
+      : type === 'discussion'
+        ? 'What would you do in this situation?\n\nConsider the person’s needs, preferences and safety.'
+        : 'Add your teaching points here.';
+    setSlides(items => [...items,{type,title:layouts.find(item=>item[0]===type)?.[1] || 'New slide',body}]);
+    setActive(slides.length);
+  };
+
+  function structure(text,kind) {
+    const lines = text.replace(/\r/g,'').split('\n').map(line=>line.replace(/\u00a0/g,' ').replace(/[ \t]+/g,' ').trim());
+    const chunks = [];
+    let current = '';
+    for (const line of lines) {
+      if (!line) { if(current){chunks.push(current);current='';} continue; }
+      if (/^(?:#{1,4}\s+|(?:\d+(?:\.\d+)*[.)]?\s+)|[A-Z][A-Z0-9 /&-]{4,})/.test(line) && line.length < 90) {
+        if(current){chunks.push(current);current='';}
+        chunks.push(line.replace(/^#{1,4}\s*/,''));
+      } else {
+        current += (current ? ' ' : '') + line;
+        if (current.length > 650) { chunks.push(current); current=''; }
+      }
+    }
+    if(current) chunks.push(current);
+    const sections = [];
+    let section = {title:'',items:[]};
+    const isHeading = value => value.length < 76 && value.split(/\s+/).length <= 9 && !/[.!?]$/.test(value) && /^[A-Z0-9]/.test(value);
+    for (const chunk of chunks) {
+      if (isHeading(chunk) && section.items.length) {
+        sections.push(section); section = {title:chunk.replace(/^[\d.]+[.)]?\s*/,''),items:[]};
+      } else section.items.push(chunk);
+    }
+    if(section.items.length || section.title) sections.push(section);
+    const classify = (title,body) => {
+      const value = (title+' '+body).toLowerCase();
+      if(/learning outcomes?|learning objectives?|by the end of|you will be able to/.test(value)) return 'objectives';
+      if(/quiz|knowledge check|check your understanding|true or false|question\s*\d/.test(value) || (kind==='Quiz' && body.includes('?'))) return 'quiz';
+      if(/discussion|reflect|think about/.test(value)) return 'discussion';
+      if(/activity|practical task|group work|pair work|workshop/.test(value)) return 'activity';
+      if(/summary|key takeaways|conclusion|recap/.test(value)) return 'summary';
+      if(/agenda|session overview|lesson outline/.test(value)) return 'agenda';
+      return 'content';
+    };
+    const title = (sections.find(item=>item.title)?.title || 'Teaching session').replace(/^[\d.)\s-]+/,'');
+    const output = [{type:'title',title,body:course,sub:'H&H Accredited Training  •  Faculty teaching deck'}];
+    const agenda = sections.find(item=>classify(item.title,item.items.join(' '))==='agenda');
+    if (agenda) output.push({type:'agenda',title:agenda.title || 'Today’s learning journey',body:agenda.items.join('\n')});
+    else {
+      const headings = sections.filter(item=>item.title && classify(item.title,item.items.join(' '))==='content').map(item=>item.title);
+      if(headings.length>=3 && kind!=='Quiz') output.push({type:'agenda',title:'Today’s learning journey',body:headings.slice(0,6).join('\n')});
+    }
+    sections.forEach(item=>{
+      const body = item.items.join('\n');
+      if(!body.trim()) return;
+      const type = classify(item.title,body);
+      if(type==='agenda') return;
+      const groups = [];
+      let group = [];
+      let length = 0;
+      item.items.forEach(part=>{
+        if(group.length && (length+part.length>560 || group.length>=6)){groups.push(group);group=[];length=0;}
+        group.push(part); length += part.length;
+      });
+      if(group.length) groups.push(group);
+      groups.forEach((parts,index)=>{
+        const fallback = {objectives:'Learning goals',quiz:'Knowledge check',discussion:'Discussion',activity:'Class activity',summary:'Quick summary',content:'Key teaching points'}[type];
+        output.push({type,title:(item.title || fallback)+(groups.length>1?` (${index+1})`:''),body:parts.join('\n')});
+      });
+    });
+    if(kind==='Quiz' && !output.some(item=>item.type==='quiz')) output.push({type:'quiz',title:'Knowledge check',body:'Add a question based on the material and include answer options for learners.'});
+    if(kind==='Workshop' && !output.some(item=>['activity','discussion'].includes(item.type))) output.push({type:'activity',title:'Apply your learning',body:'Use the key ideas from this session to complete a practical task.'});
+    if(!output.some(item=>item.type==='summary')) {
+      const points=output.filter(item=>item.type==='content').slice(-3).map(item=>item.title);
+      if(points.length) output.push({type:'summary',title:'Review and reflect',body:'Revisit these key areas:\n'+points.join('\n')+'\n\nWhat is one idea you will apply after this session?'});
+    }
+    return output;
+  }
+
+  async function readFile(upload) {
+    setBusy(true); setFile(upload); setNotice('Reading your material…');
+    try {
+      const ext=upload.name.split('.').pop().toLowerCase();
+      let text='';
+      if(['txt','md'].includes(ext)) text=await upload.text();
+      else if(ext==='docx') text=(await mammoth.extractRawText({arrayBuffer:await upload.arrayBuffer()})).value;
+      else if(ext==='pdf') {
+        const pdf=await pdfjsLib.getDocument({data:await upload.arrayBuffer()}).promise;
+        const pages=[];
+        for(let pageNo=1;pageNo<=pdf.numPages;pageNo++) {
+          const page=await pdf.getPage(pageNo);
+          const content=await page.getTextContent();
+          pages.push(content.items.map(item=>item.str).filter(Boolean).join(' '));
+        }
+        text=pages.join('\n\n');
+      } else throw new Error('Please use PDF, DOCX, TXT or MD.');
+      if(!text.trim()) throw new Error('No readable text was found. Scanned PDFs need OCR before upload.');
+      setSource(text);
+      const draft=structure(text,mode);
+      setSlides(draft); setActive(0);
+      setNotice(`Imported ${upload.name}. Created ${draft.length} draft slides. Review before export.`);
+    } catch(error) { setNotice(error.message || 'Could not read that file.'); }
+    finally { setBusy(false); }
+  }
+
+  async function exportPptx() {
+    setBusy(true); setNotice('Building your editable H&H PowerPoint…');
+    try {
+      const pptx=new pptxgen();
+      const logo=await loadBrandLogo();
+      pptx.layout='LAYOUT_WIDE';
+      pptx.author='H&H Accredited Training';
+      pptx.company='H&H Accredited Training';
+      pptx.subject='H&H faculty teaching presentation';
+      pptx.title=slides[0]?.title || 'H&H Teaching Slides';
+      pptx.lang='en-AU';
+      pptx.theme={headFontFace:'Manrope',bodyFontFace:'Source Sans 3',lang:'en-AU'};
+      pptx.defineSlideMaster({
+        title:'HH_BASE',
+        background:{color:C.paper},
+        objects:[
+          {line:{x:0,y:7.32,w:13.333,h:0,line:{color:'D9E2E2',width:1}}},
+          {text:{text:'H&H  |  ACCREDITED TRAINING',options:{x:.55,y:7.05,w:4,h:.18,fontFace:'Source Sans 3',fontSize:8,color:pptx.SchemeColor.accent1,bold:true,charSpacing:1}}},
+          {text:{text:'REAL SKILLS. REAL SUPPORT. REAL CAREERS.',options:{x:8.25,y:7.05,w:4.5,h:.18,fontFace:'Source Sans 3',fontSize:7,color:'64757A',align:'right',charSpacing:.5}}}
+        ],
+        slideNumber:{x:12.8,y:7.05,color:pptx.SchemeColor.accent1,fontFace:'Source Sans 3',fontSize:8}
+      });
+
+      slides.forEach(item=>{
+        const slide=pptx.addSlide('HH_BASE');
+        const dark=['title','section'].includes(item.type);
+        slide.background={color:dark?C.teal:C.paper};
+        if(dark) {
+          slide.addShape(pptx.ShapeType.roundRect,{x:.72,y:.42,w:2.48,h:1.08,rectRadius:.08,line:{color:C.white,transparency:100},fill:{color:C.white}});
+          if(logo) slide.addImage({data:logo,x:.86,y:.51,w:2.2,h:.9});
+          else {
+            slide.addText('h&h',{x:.9,y:.57,w:1.7,h:.55,fontFace:'Manrope',fontSize:34,bold:true,color:C.teal,margin:0});
+            slide.addText('Accredited Training',{x:.94,y:1.12,w:1.9,h:.18,fontFace:'Source Sans 3',fontSize:10,color:C.teal,margin:0});
+          }
+          slide.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:pptx.SchemeColor.accent4,width:3,transparency:5},rotate:5});
+          slide.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:pptx.SchemeColor.accent2,width:2,transparency:5},rotate:5});
+          slide.addText(item.title,{x:.8,y:2.35,w:7.5,h:1.65,fontFace:'Manrope',fontSize:30,bold:true,color:C.white,fit:'shrink',margin:0});
+          slide.addText(item.body||'',{x:.82,y:4.18,w:6.6,h:1.2,fontFace:'Source Sans 3',fontSize:19,color:'EAF4F4',fit:'shrink',margin:0});
+          slide.addText(item.sub||course,{x:.82,y:6.42,w:6.3,h:.3,fontFace:'Source Sans 3',fontSize:11,color:C.gold,margin:0});
+        } else {
+          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7,line:{color:pptx.SchemeColor.accent1,transparency:100},fill:{color:pptx.SchemeColor.accent1}});
+          if(logo) slide.addImage({data:logo,x:11.45,y:.22,w:1.25,h:.73});
+          slide.addText(item.title,{x:.7,y:.55,w:10.2,h:.72,fontFace:'Manrope',fontSize:27,bold:true,color:pptx.SchemeColor.accent1,margin:0,fit:'shrink'});
+          slide.addShape(pptx.ShapeType.line,{x:.72,y:1.42,w:1.2,h:0,line:{color:pptx.SchemeColor.accent2,width:3}});
+          if(['agenda','objectives','summary'].includes(item.type)) {
+            item.body.split(/\n+/).filter(Boolean).slice(0,6).forEach((text,index)=>{
+              const y=1.9+index*.82;
+              slide.addShape(pptx.ShapeType.ellipse,{x:.85,y:y+.1,w:.34,h:.34,line:{color:index%2?pptx.SchemeColor.accent4:pptx.SchemeColor.accent2,transparency:100},fill:{color:index%2?pptx.SchemeColor.accent4:pptx.SchemeColor.accent2}});
+              slide.addText(text.replace(/^[-•\d.)\s]+/,''),{x:1.45,y,w:10.6,h:.55,fontFace:'Source Sans 3',fontSize:19,color:C.ink,fit:'shrink',margin:.03});
+            });
+          } else {
+            slide.addShape(pptx.ShapeType.roundRect,{x:.75,y:1.85,w:11.8,h:4.75,rectRadius:.12,line:{color:'DCE7E7',width:1},fill:{color:C.white}});
+            slide.addText(item.body,{x:1.15,y:2.2,w:item.imageData?6.1:10.9,h:4,fontFace:'Source Sans 3',fontSize:20,color:C.ink,fit:'shrink',breakLine:false,margin:.08});
+            if(item.imageData) slide.addImage({data:item.imageData,x:7.65,y:2.2,w:4.45,h:3.8});
+            if(item.resourceUrl) {
+              slide.addShape(pptx.ShapeType.roundRect,{x:1.15,y:6,w:3.8,h:.42,rectRadius:.06,line:{color:pptx.SchemeColor.accent1,width:1},fill:{color:C.pale}});
+              slide.addText('OPEN CLASS RESOURCE',{x:1.3,y:6.13,w:3.4,h:.12,fontFace:'Manrope',fontSize:8,bold:true,color:pptx.SchemeColor.accent1,hyperlink:{url:item.resourceUrl},margin:0});
+            }
+            if(['activity','discussion'].includes(item.type)) {
+              slide.addShape(pptx.ShapeType.roundRect,{x:9.4,y:5.7,w:2.6,h:.5,rectRadius:.08,line:{color:pptx.SchemeColor.accent1,transparency:100},fill:{color:C.pale}});
+              slide.addText(item.type==='activity'?'LEARN BY DOING':'SHARE YOUR THINKING',{x:9.52,y:5.86,w:2.35,h:.16,fontFace:'Manrope',fontSize:8,bold:true,color:pptx.SchemeColor.accent1,align:'center',margin:0});
+            }
+          }
+        }
+      });
+
+      const rawBlob=await pptx.write({outputType:'blob',compression:true});
+      const themedBlob=await applyHhTheme(rawBlob);
+      downloadBlob(themedBlob,'HH-Accredited-Training-Teaching-Deck.pptx');
+      setNotice('PowerPoint exported with the H&H editable colour theme and brand logo.');
+    } catch(error) {
+      console.error(error);
+      setNotice('Export failed: '+(error.message || 'Please try again.'));
+    } finally { setBusy(false); }
+  }
+
+  return <div className="app">
+    <aside className="sidebar">
+      <div className="brand"><img src="/assets/hh-logo.png" alt="H&H Accredited Training"/><span>SLIDE STUDIO</span></div>
+      <div className="side-label">WORKSPACE</div>
+      <button className="side-item selected">✦ <span>Presentation builder</span></button>
+      <a className="side-item" href="/how-to.html" style={{textDecoration:'none'}}>⌁ <span>Staff quick guide</span></a>
+      <button className="side-item" onClick={()=>setNotice('The H&H brand system is locked to the supplied guidelines.')}>◈ <span>Brand system</span><b>LOCKED</b></button>
+      <div className="side-bottom"><div className="avatar">HH</div><div><strong>Faculty workspace</strong><small>H&H Accredited Training</small></div></div>
+    </aside>
+    <main className="main">
+      <header className="topbar">
+        <div><div className="eyebrow">FACULTY TOOLKIT / POWERPOINT GENERATOR</div><h1>Teaching, beautifully presented.</h1><p>Turn your teaching material into a consistent, classroom-ready deck.</p></div>
+        <div className="top-actions"><span className="secure">● H&H BRAND APPLIED</span><button className="export" disabled={busy||!slides.length} onClick={exportPptx}>{busy?'Preparing…':'↓  Export PowerPoint'}</button></div>
+      </header>
+      <section className="workspace">
+        <div className="left-panel">
+          <div className="panel-head"><div><span className="step">01 / SOURCE MATERIAL</span><h2>Start with your content</h2><p>Drop in lecture notes, a course guide or a worksheet.</p></div><span className="file-icon">↥</span></div>
+          <label className="dropzone" onDragOver={event=>event.preventDefault()} onDrop={event=>{event.preventDefault();if(event.dataTransfer.files[0])readFile(event.dataTransfer.files[0]);}}>
+            <input type="file" accept=".pdf,.docx,.txt,.md" onChange={event=>event.target.files[0]&&readFile(event.target.files[0])}/>
+            <span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD</small>
+          </label>
+          <div className="or-line"><span>DECK SETTINGS</span></div>
+          <label className="field-label">Teaching format</label>
+          <div className="mode-switch">{['Lecture','Quiz','Workshop'].map(value=><button key={value} className={mode===value?'active':''} onClick={()=>setMode(value)}>{value}</button>)}</div>
+          <label className="field-label">Course / unit name</label><input className="text-input" value={course} onChange={event=>setCourse(event.target.value)}/>
+          <div className="brand-note"><span>✦</span><div><strong>H&H design system is active</strong><small>Brand logo, approved colours and fonts are embedded in your PowerPoint. Theme-linked elements can be recoloured in PowerPoint.</small></div></div>
+          <button className="build-btn" disabled={!source||busy} onClick={()=>{setSlides(structure(source,mode));setActive(0);setNotice('Your content has been reorganised into a teaching deck. Review each slide before export.');}}>✦  Build slide outline</button>
+        </div>
+        <div className="right-panel">
+          <div className="panel-head right-head"><div><span className="step">02 / DECK EDITOR</span><h2>Your teaching deck</h2><p>Review and refine the slide content before export.</p></div><span className="slide-count">{slides.length} SLIDES</span></div>
+          <div className="editor">
+            <div className="slide-list">{slides.map((item,index)=><button key={`${index}-${item.title}`} className={`slide-thumb ${active===index?'current':''}`} onClick={()=>setActive(index)}><span className="thumb-no">{String(index+1).padStart(2,'0')}</span><span className="thumb-title">{item.title}</span><span className="thumb-type">{layouts.find(layout=>layout[0]===item.type)?.[1]||'Content'}</span></button>)}<button className="add-slide" onClick={()=>addSlide('content')}>＋ Add slide</button></div>
+            <div className="edit-area">{activeSlide&&<>
+              <div className="preview-wrap"><div className={`mini-slide ${['title','section'].includes(activeSlide.type)?'dark':''}`}><div className="mini-logo">h<span>&</span>h <small>Accredited Training</small></div><div className="mini-rule"></div><h3>{activeSlide.title}</h3><p>{activeSlide.body.split('\n').filter(Boolean).slice(0,4).join('  •  ')}</p><div className="mini-footer">REAL SKILLS. REAL SUPPORT. REAL CAREERS.</div></div></div>
+              <div className="edit-fields">
+                <div className="edit-head"><span>EDIT SELECTED SLIDE</span><select value={activeSlide.type} onChange={event=>update('type',event.target.value)}>{layouts.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+                <label>Slide heading</label><input value={activeSlide.title} onChange={event=>update('title',event.target.value)}/>
+                <label>Teaching content</label><textarea rows="7" value={activeSlide.body} onChange={event=>update('body',event.target.value)} placeholder="Add text, bullet points or questions…"/>
+                <label>Slide image (optional)</label><input type="file" accept="image/png,image/jpeg" onChange={event=>{const image=event.target.files?.[0];if(image)fileToDataUrl(image).then(data=>update('imageData',data));}}/>
+                {activeSlide.imageData&&<button className="delete-slide" onClick={()=>update('imageData',null)}>Remove image</button>}
+                <label>Video / worksheet link (optional)</label><input value={activeSlide.resourceUrl||''} onChange={event=>update('resourceUrl',event.target.value)} placeholder="https://…"/>
+                <div className="field-hint">Tip: Put each bullet or answer option on a new line. Add a photo to create a balanced text-and-image slide. The exported slide remains editable.</div>
+                <button className="delete-slide" onClick={()=>{if(slides.length>1){setSlides(items=>items.filter((_,index)=>index!==active));setActive(Math.max(0,active-1));}}}>Remove slide</button>
+              </div>
+            </>}</div>
+          </div>
+        </div>
+      </section>
+      <div className="bottom-row">
+        <div className="bottom-card"><span className="bottom-symbol">▧</span><div><strong>Designed for teaching</strong><small>Title, agenda, goals, content, activities, discussion, quiz and summary layouts.</small></div></div>
+        <div className="bottom-card"><span className="bottom-symbol">◉</span><div><strong>One consistent identity</strong><small>H&H colours, Manrope headings, Source Sans 3 body text and branded slide furniture.</small></div></div>
+        <div className="bottom-card"><span className="bottom-symbol">↗</span><div><strong>PowerPoint-ready</strong><small>Editable text and shapes, widescreen 16:9 format, reusable master layout and theme.</small></div></div>
+      </div>
+      <footer className="status"><span className="status-dot"></span>{notice}<span className="status-right">H&H ACCREDITED TRAINING · SYDNEY</span></footer>
+    </main>
+  </div>;
 }
 createRoot(document.getElementById('root')).render(<App/>);
