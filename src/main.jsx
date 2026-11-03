@@ -117,11 +117,13 @@ function App() {
   const [course,setCourse] = useState('Certificate III in Individual Support');
   const [busy,setBusy] = useState(false);
   const [active,setActive] = useState(0);
+  const [deckModified,setDeckModified] = useState(false);
   const [notice,setNotice] = useState('Loading the H&H sample deck with embedded photography. Upload your own material to replace it.');
 
   const activeSlide = slides[active] || slides[0];
-  const update = (key,value) => setSlides(items => items.map((slide,index) => index === active ? {...slide,[key]:value} : slide));
+  const update = (key,value) => { setDeckModified(true); setSlides(items => items.map((slide,index) => index === active ? {...slide,[key]:value} : slide)); };
   const addSlide = type => {
+    setDeckModified(true);
     const body = type === 'quiz'
       ? 'Question: Add your question here\n\nA. Option one\nB. Option two\nC. Option three\nD. Option four'
       : type === 'discussion'
@@ -211,7 +213,7 @@ function App() {
       const draft=brandBoardSlides(data,'H&H Accredited Training brand guidelines',photos);
       setFile({name:'H&H Accredited Training brand guidelines.png'});
       setSource('');
-      setSlides(draft); setActive(0);
+      setSlides(draft); setActive(0); setDeckModified(false);
       setNotice(`Sample loaded: ${draft.length} slides. Edit the content, then export the PowerPoint to test the prototype.`);
     } catch(error) {
       setSlides([]); setActive(0);
@@ -235,7 +237,7 @@ function App() {
               {type:'brandboard',title:'Original image — visual reference',body:`Source image: ${upload.name}\nThe image is preserved as a visual reference. Text in the image is not automatically extracted.`,imageData:data}
             ];
         setSource('');
-        setSlides(draft); setActive(0);
+        setSlides(draft); setActive(0); setDeckModified(true);
         setNotice(isHhBoard
           ? `Imported ${upload.name}. Created ${draft.length} slides with editable brand summaries and the original image as a reference; review before export.`
           : `Imported ${upload.name} as a visual reference. Image text is not automatically extracted; add your own editable content before export.`);
@@ -256,7 +258,7 @@ function App() {
       if(!text.trim()) throw new Error('No readable text was found. Scanned PDFs need OCR before upload.');
       setSource(text);
       const draft=structure(text,mode);
-      setSlides(draft); setActive(0);
+      setSlides(draft); setActive(0); setDeckModified(true);
       setNotice(`Imported ${upload.name}. Created ${draft.length} draft slides. Review before export.`);
     } catch(error) { setNotice(error.message || 'Could not read that file.'); }
     finally { setBusy(false); }
@@ -408,13 +410,13 @@ function App() {
             <input type="file" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" onChange={event=>event.target.files[0]&&readFile(event.target.files[0])}/>
             <span className="upload-icon">↑</span><strong>{file?file.name:'Drop your material or brand board here'}</strong><span>or <u>browse files</u> from your computer</span><small>PDF · DOCX · TXT · MD · PNG · JPG · WEBP</small>
           </label>
-          <button className="sample-btn" onClick={loadBrandBoardSample} disabled={busy}>✦  Reload H&H brand-board sample (11 slides)</button>
+          <button className="sample-btn" onClick={()=>{if(deckModified && !window.confirm('Restore the original H&H sample deck? This will replace your current slides and discard your edits.')) return; loadBrandBoardSample();}} disabled={busy}>✦  Restore H&H Sample Deck</button>
           <div className="or-line"><span>DECK SETTINGS</span></div>
           <label className="field-label">Teaching format</label>
           <div className="mode-switch">{['Lecture','Quiz','Workshop'].map(value=><button key={value} className={mode===value?'active':''} onClick={()=>setMode(value)}>{value}</button>)}</div>
-          <label className="field-label">Course / unit name</label><input className="text-input" value={course} onChange={event=>setCourse(event.target.value)}/>
+          <label className="field-label">Course / unit name</label><input className="text-input" value={course} onChange={event=>{setCourse(event.target.value);setDeckModified(true);}}/>
           <div className="brand-note"><span>✦</span><div><strong>H&H design system is active</strong><small>Brand logo, approved H&H colours and fonts are applied directly to editable PowerPoint elements.</small></div></div>
-          <button className="build-btn" disabled={!source||busy} onClick={()=>{setSlides(structure(source,mode));setActive(0);setNotice('Your content has been reorganised into a teaching deck. Review each slide before export.');}}>✦  Build slide outline</button>
+          <button className="build-btn" disabled={!source||busy} onClick={()=>{setSlides(structure(source,mode));setActive(0);setDeckModified(true);setNotice('Your content has been reorganised into a teaching deck. Review each slide before export.');}}>✦  Build slide outline</button>
         </div>
         <div className="right-panel">
           <div className="panel-head right-head"><div><span className="step">02 / DECK EDITOR</span><h2>Your teaching deck</h2><p>Review and refine the slide content before export.</p></div><span className="slide-count">{slides.length} SLIDES</span></div>
@@ -430,7 +432,7 @@ function App() {
                 {activeSlide.imageData&&<button className="delete-slide" onClick={()=>update('imageData',null)}>Remove image</button>}
                 <label>Video / worksheet link (optional)</label><input value={activeSlide.resourceUrl||''} onChange={event=>update('resourceUrl',event.target.value)} placeholder="https://…"/>
                 <div className="field-hint">Tip: Put each bullet or answer option on a new line. Add a photo to create a balanced text-and-image slide. The exported slide remains editable.</div>
-                <button className="delete-slide" onClick={()=>{if(slides.length>1){setSlides(items=>items.filter((_,index)=>index!==active));setActive(Math.max(0,active-1));}}}>Remove slide</button>
+                <button className="delete-slide" onClick={()=>{if(slides.length>1){setSlides(items=>items.filter((_,index)=>index!==active));setActive(Math.max(0,active-1));setDeckModified(true);}}}>Remove slide</button>
               </div>
             </>}</div>
           </div>
