@@ -53,7 +53,7 @@ async function loadBrandLogo() {
   } catch { return null; }
 }
 async function applyHhTheme(presentationBlob) {
-  const archive = await JSZip.loadAsync(presentationBlob);
+  const archive = await JSZip.loadAsync(await presentationBlob.arrayBuffer());
   const themeFile = archive.file('ppt/theme/theme1.xml');
   if (!themeFile) throw new Error('PowerPoint theme file was not found.');
   const xml = await themeFile.async('string');
@@ -61,24 +61,71 @@ async function applyHhTheme(presentationBlob) {
     throw new Error('Could not locate the PowerPoint colour scheme.');
   }
   archive.file('ppt/theme/theme1.xml', xml.replace(/<a:clrScheme\b[\s\S]*?<\/a:clrScheme>/, THEME_XML));
-  return archive.generateAsync({
+  const required=['[Content_Types].xml','ppt/presentation.xml','ppt/theme/theme1.xml','ppt/slides/slide1.xml'];
+  for (const name of required) if (!archive.file(name)) throw new Error(`The PowerPoint package is incomplete (${name} is missing).`);
+  const result=await archive.generateAsync({
     type:'blob',
     mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    compression:'DEFLATE'
+    compression:'DEFLATE',
+    compressionOptions:{level:6}
   });
+  if (!result || result.size<12000) throw new Error('The exported PowerPoint package is unexpectedly small. Please retry.');
+  return result;
 }
 
-function brandBoardSlides(imageData, filename='H&H brand guidelines') {
+const SAMPLE_PHOTOS = [
+  ['hero','hero-support-team.jpg','Support in action'],
+  ['childcare','childcare.jpg','Childcare'],
+  ['agedCare','aged-care.jpg','Aged care & disability'],
+  ['community','community-services.jpg','Community services'],
+  ['business','business-leadership.jpg','Business & leadership'],
+  ['firstAid','first-aid.jpg','First aid'],
+  ['social','social-training.jpg','Social media'],
+  ['courseGuide','course-guide.jpg','Course guide'],
+  ['presentation','presentation-training.jpg','Presentation'],
+  ['uniformTeal','uniform-teal.jpg','Teal uniform'],
+  ['uniformNavy','uniform-navy.jpg','Navy uniform'],
+  ['website','website-training.jpg','Website'],
+  ['poster','poster-support.jpg','Poster']
+];
+const SAMPLE_PHOTO_DIMENSIONS = {
+  hero:[328,377],childcare:[129,85],agedCare:[129,85],community:[122,85],business:[128,85],firstAid:[91,85],
+  social:[123,231],courseGuide:[117,231],presentation:[177,180],uniformTeal:[132,129],uniformNavy:[135,129],
+  website:[226,102],poster:[198,134]
+};
+
+async function loadSamplePhotos() {
+  const photos = {};
+  await Promise.all(SAMPLE_PHOTOS.map(async ([key,filename]) => {
+    const response = await fetch(`/assets/hh-sample-photos/${filename}`);
+    if (!response.ok) throw new Error(`A sample photograph could not be loaded: ${filename}`);
+    const blob = await response.blob();
+    photos[key] = await fileToDataUrl(new File([blob],filename,{type:'image/jpeg'}));
+  }));
+  return photos;
+}
+
+function brandBoardSlides(imageData, filename='H&H brand guidelines', photos={}) {
+  const courseGallery = [
+    ['childcare','Childcare'],['agedCare','Aged care & disability'],['community','Community services'],
+    ['business','Business & leadership'],['firstAid','First aid']
+  ].filter(([key])=>photos[key]).map(([key,label])=>({label,imageData:photos[key],imageWidth:SAMPLE_PHOTO_DIMENSIONS[key][0],imageHeight:SAMPLE_PHOTO_DIMENSIONS[key][1]}));
+  const applicationGallery = [
+    ['social','Social media'],['courseGuide','Course guide'],['presentation','Presentation slide'],
+    ['uniformTeal','Teal uniform'],['uniformNavy','Navy uniform'],['website','Website header'],['poster','Poster']
+  ].filter(([key])=>photos[key]).map(([key,label])=>({label,imageData:photos[key],imageWidth:SAMPLE_PHOTO_DIMENSIONS[key][0],imageHeight:SAMPLE_PHOTO_DIMENSIONS[key][1]}));
   return [
-    {type:'title',title:'Real skills. Real support. Real careers.',body:'H&H Accredited Training',sub:'Brand identity and application guide'},
-    {type:'content',title:'A clear, confident brand promise',body:'Nationally recognised training in childcare, aged care, disability, community services and business.\n\nOur identity should feel clean, modern, friendly and highly readable. Every touchpoint should communicate practical skills, dedicated support and flexible study options.'},
+    {type:'title',title:'Real skills. Real support. Real careers.',body:'H&H Accredited Training',sub:'Brand identity and application guide',imageData:photos.hero},
+    {type:'content',title:'A clear, confident brand promise',body:'Nationally recognised training in childcare, aged care, disability, community services and business.\n\nOur identity should feel clean, modern, friendly and highly readable. Every touchpoint should communicate practical skills, dedicated support and flexible study options.',imageData:photos.hero},
     {type:'content',title:'Logo suite and correct use',body:'Primary logo: horizontal H&H Accredited Training lock-up.\nStacked logo: use where vertical space is available.\nMonogram: compact H&H mark for small-format applications.\nRegulatory lock-up: include RTO 45704 where the context requires it.\n\nKeep the logo clear, legible and proportionate. Do not distort, recolour or crowd the mark.'},
     {type:'content',title:'Approved colour palette',body:'#075766  Deep teal — primary brand colour\n#A1164F  Berry — emphasis and calls to action\n#24205F  Navy — supporting depth\n#2CB8CE  Cyan — highlights and pathway accents\n#F5C84C  Gold — selective warmth and emphasis\n#F7F5F0  Warm white — primary light background\n#EDF5F6  Pale blue — panels and soft backgrounds\n#263238  Charcoal — readable body text'},
     {type:'content',title:'Typography: clear by design',body:'Manrope — headings, titles and prominent labels. Use ExtraBold, Bold and Semibold weights to establish hierarchy.\n\nSource Sans 3 — body copy, captions, supporting information and longer reading. Use Regular and Semibold weights.\n\nKeep line lengths comfortable, maintain strong contrast and avoid unnecessary typographic decoration.'},
     {type:'content',title:'Iconography and visual language',body:'Use simple, friendly, consistent line icons.\nPrefer open shapes, even stroke weights and recognisable forms.\nUse generous whitespace and restrained colour accents.\nPair photography with clear, human-centred messages.\nAvoid clutter, heavy effects and inconsistent illustration styles.'},
+    {type:'gallery',title:'Our courses, brought to life',body:'Use authentic, people-centred photography to show the breadth of H&H training.',galleryItems:courseGallery},
     {type:'content',title:'The H&H learning pathway',body:'LEARN — Build real skills with expert trainers.\n\nCONNECT — Get support every step of the way.\n\nSUCCEED — Gain confidence and start your next career.\n\nUse this sequence to organise learner journeys, course communications and campaign messages.'},
+    {type:'gallery',title:'One identity. Many touchpoints.',body:'The same visual identity carries across learner, digital and workplace experiences.',galleryItems:applicationGallery},
     {type:'content',title:'Brand applications and consistency',body:'Carry the same identity across social media, course guides, presentation slides, email signatures, certificates, uniforms, name badges, website headers and posters.\n\nKeep the logo, colour palette, typography, icon style and message hierarchy consistent. Adapt layouts to each format without changing the underlying identity.'},
-    {type:'brandboard',title:'Original brand board — visual reference',body:`Source image: ${filename}\nThis slide preserves the supplied artwork as a visual reference. The preceding slides are editable PowerPoint content.`,imageData}
+    {type:'brandboard',title:'Original brand board — visual reference',body:`Source image: ${filename}\nThis slide preserves the supplied artwork as a visual reference. The preceding slides contain editable text, shapes and embedded photographs.`,imageData}
   ];
 }
 
@@ -90,7 +137,7 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  window.setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function App() {
@@ -191,7 +238,8 @@ function App() {
       if(!response.ok) throw new Error('The bundled brand-board sample could not be loaded.');
       const blob=await response.blob();
       const data=await fileToDataUrl(new File([blob],'H&H-Accredited-Training-brand-board.jpg',{type:'image/jpeg'}));
-      const draft=brandBoardSlides(data,'H&H Accredited Training brand guidelines');
+      const photos=await loadSamplePhotos();
+      const draft=brandBoardSlides(data,'H&H Accredited Training brand guidelines',photos);
       setFile({name:'H&H Accredited Training brand guidelines.png'});
       setSource('');
       setSlides(draft); setActive(0);
@@ -209,7 +257,7 @@ function App() {
         const data=await fileToDataUrl(upload);
         const isHhBoard=/brand[\s_-]?(guidelines|board)/i.test(upload.name);
         const draft=isHhBoard
-          ? brandBoardSlides(data,upload.name)
+          ? brandBoardSlides(data,upload.name,await loadSamplePhotos())
           : [
               {type:'title',title:'Visual reference deck',body:'Use this presentation to discuss the supplied image and add your own teaching notes.',sub:upload.name},
               {type:'brandboard',title:'Original image — visual reference',body:`Source image: ${upload.name}\nThe image is preserved as a visual reference. Text in the image is not automatically extracted.`,imageData:data}
@@ -269,9 +317,37 @@ function App() {
         const slide=pptx.addSlide('HH_BASE');
         if(item.type==='brandboard') {
           slide.background={color:C.paper};
-          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.333,h:7.5,line:{color:C.paper,transparency:100},fill:{color:C.paper}});
-          if(item.imageData) slide.addImage({data:item.imageData,x:1.92,y:.18,w:9.5,h:6.33});
-          slide.addText('ORIGINAL BRAND BOARD  •  VISUAL REFERENCE',{x:.38,y:7.24,w:6,h:.12,fontFace:'Manrope',fontSize:6,bold:true,color:C.teal,margin:0,charSpacing:.6});
+          if(item.imageData) slide.addImage({data:item.imageData,x:1.05,y:.12,w:10.76,h:7.18});
+          slide.addText('ORIGINAL BRAND BOARD  •  VISUAL REFERENCE',{x:.38,y:7.31,w:6,h:.1,fontFace:'Manrope',fontSize:6,bold:true,color:C.teal,margin:0,charSpacing:.6});
+          return;
+        }
+        if(item.type==='gallery') {
+          slide.background={color:C.paper};
+          slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7,line:{color:C.teal,transparency:100},fill:{color:C.teal}});
+          slide.addText(item.title,{x:.7,y:.48,w:11.8,h:.62,fontFace:'Manrope',fontSize:26,bold:true,color:C.teal,margin:0,fit:'shrink'});
+          slide.addText(item.body||'',{x:.72,y:1.18,w:11.6,h:.35,fontFace:'Source Sans 3',fontSize:12,color:C.ink,margin:0,fit:'shrink'});
+          const cards=item.galleryItems||[];
+          const rows=cards.length>5?2:1;
+          const perRow=rows===1?cards.length:4;
+          const gap=.16;
+          const cardW=rows===1?((11.85-gap*(cards.length-1))/cards.length):2.82;
+          const cardH=rows===1?2.25:2.05;
+          cards.forEach((card,index)=>{
+            const row=rows===1?0:Math.floor(index/4);
+            const col=rows===1?index:(row===0?index:index-4);
+            const rowCount=rows===1?cards.length:(row===0?4:cards.length-4);
+            const rowWidth=rowCount*cardW+(rowCount-1)*gap;
+            const left=(13.333-rowWidth)/2;
+            const x=left+col*(cardW+gap);
+            const y=rows===1?2.35:1.88+row*2.35;
+            slide.addShape(pptx.ShapeType.roundRect,{x,y,w:cardW,h:cardH+.42,rectRadius:.08,line:{color:'DCE7E7',width:1},fill:{color:C.white}});
+            const maxImageW=cardW-.22, maxImageH=cardH-.55;
+            const imageRatio=(card.imageWidth||1)/(card.imageHeight||1);
+            const imageW=Math.min(maxImageW,maxImageH*imageRatio);
+            const imageH=imageW/imageRatio;
+            slide.addImage({data:card.imageData,x:x+(cardW-imageW)/2,y:y+.08+(maxImageH-imageH)/2,w:imageW,h:imageH});
+            slide.addText(card.label,{x:x+.1,y:y+cardH-.38,w:cardW-.2,h:.3,fontFace:'Manrope',fontSize:rows===1?10:9,bold:true,color:C.teal,align:'center',valign:'mid',fit:'shrink',margin:0});
+          });
           return;
         }
         const dark=['title','section'].includes(item.type);
@@ -283,10 +359,15 @@ function App() {
             slide.addText('h&h',{x:.9,y:.57,w:1.7,h:.55,fontFace:'Manrope',fontSize:34,bold:true,color:C.teal,margin:0});
             slide.addText('Accredited Training',{x:.94,y:1.12,w:1.9,h:.18,fontFace:'Source Sans 3',fontSize:10,color:C.teal,margin:0});
           }
-          slide.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:pptx.SchemeColor.accent4,width:3,transparency:5},rotate:5});
-          slide.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:pptx.SchemeColor.accent2,width:2,transparency:5},rotate:5});
-          slide.addText(item.title,{x:.8,y:2.35,w:7.5,h:1.65,fontFace:'Manrope',fontSize:30,bold:true,color:C.white,fit:'shrink',margin:0});
-          slide.addText(item.body||'',{x:.82,y:4.18,w:6.6,h:1.2,fontFace:'Source Sans 3',fontSize:19,color:'EAF4F4',fit:'shrink',margin:0});
+          if(item.imageData) {
+            slide.addShape(pptx.ShapeType.roundRect,{x:8.35,y:1.55,w:4.25,h:4.95,rectRadius:.14,line:{color:C.cyan,width:1.2},fill:{color:C.teal}});
+            slide.addImage({data:item.imageData,x:8.42,y:1.62,w:4.11,h:4.81});
+          } else {
+            slide.addShape(pptx.ShapeType.arc,{x:8.3,y:-.8,w:5.6,h:8.3,line:{color:pptx.SchemeColor.accent4,width:3,transparency:5},rotate:5});
+            slide.addShape(pptx.ShapeType.arc,{x:8.65,y:-.7,w:5.4,h:8.1,line:{color:pptx.SchemeColor.accent2,width:2,transparency:5},rotate:5});
+          }
+          slide.addText(item.title,{x:.8,y:2.35,w:7.2,h:1.65,fontFace:'Manrope',fontSize:30,bold:true,color:C.white,fit:'shrink',margin:0});
+          slide.addText(item.body||'',{x:.82,y:4.18,w:6.2,h:1.2,fontFace:'Source Sans 3',fontSize:19,color:'EAF4F4',fit:'shrink',margin:0});
           slide.addText(item.sub||course,{x:.82,y:6.42,w:6.3,h:.3,fontFace:'Source Sans 3',fontSize:11,color:C.gold,margin:0});
         } else {
           slide.addShape(pptx.ShapeType.rect,{x:0,y:0,w:.16,h:7,line:{color:pptx.SchemeColor.accent1,transparency:100},fill:{color:pptx.SchemeColor.accent1}});
